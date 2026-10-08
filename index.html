@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kimana Fries | Fast Delivery</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- Header -->
+  <header class="navbar">
+    <div class="logo">🍟 Kimana Fries</div>
+    <button class="cart-btn" id="openCartBtn">
+      Cart (<span id="cartCount">0</span>)
+    </button>
+  </header>
+
+  <!-- Hero Banner -->
+  <section class="hero">
+    <h1>Hot Fries Delivered in Minutes!</h1>
+    <p>Order online, dispatched straight to our active Boda riders.</p>
+  </section>
+
+  <!-- Main Content: Menu -->
+  <main class="container">
+    <h2>Our Menu</h2>
+    <div class="menu-grid" id="menuGrid">
+      <!-- Cards rendered dynamically via app.js -->
+    </div>
+  </main>
+
+  <!-- Slide-over Cart Drawer -->
+  <div class="cart-overlay" id="cartOverlay"></div>
+  <aside class="cart-drawer" id="cartDrawer">
+    <div class="cart-header">
+      <h3>Your Order</h3>
+      <button class="close-btn" id="closeCartBtn">&times;</button>
+    </div>
+
+    <div class="cart-body" id="cartItemsContainer">
+      <p class="empty-msg">Your cart is empty.</p>
+    </div>
+
+    <div class="cart-footer">
+      <div class="total-row">
+        <span>Total:</span>
+        <strong>KES <span id="cartTotal">0</span></strong>
+      </div>
+
+      <!-- Checkout Form -->
+      <form id="checkoutForm">
+        <label for="customerPhone">WhatsApp Phone Number</label>
+        <input type="tel" id="customerPhone" placeholder="e.g., 254712345678" required>
+
+        <label for="deliveryLocation">Delivery Location / Room</label>
+        <input type="text" id="deliveryLocation" placeholder="e.g., Gate B, Room 4" required>
+
+        <button type="submit" class="checkout-btn" id="submitOrderBtn">
+          Confirm & Place Order
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- ADDED: Script tag at the end of the body -->
+  <script src="app.js"></script>
+</body>
+</html>
