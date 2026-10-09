@@ -2,7 +2,6 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@libsql/client';
-import { crypto } from 'crypto';
 
 dotenv.config();
 
@@ -10,7 +9,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Middleware
-app.use(cors()); // Allows request from your frontend (GitHub Pages or local)
+app.use(cors()); // Enables cross-origin requests from frontend
 app.use(express.json());
 
 // Initialize Turso Client
@@ -19,17 +18,17 @@ const turso = createClient({
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-// Health check endpoint (for pinging to prevent Render cold-starts)
+// Health Check Endpoint
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
 
-// POST Endpoint: Create Order
+// POST Endpoint: Save Order to Turso DB
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
 
-    // Basic Validation
+    // 1. Basic Validation
     if (!customerPhone || !deliveryLocation || !items || !totalAmount) {
       return res.status(400).json({ 
         success: false, 
@@ -37,40 +36,39 @@ app.post('/api/orders/create', async (req, res) => {
       });
     }
 
-    // Generate unique order ID (e.g., KF-8F32A)
+    // 2. Generate Unique Order ID (e.g., KF-7B2A9)
     const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
 
-    // Convert items array to JSON string for database storage
+    // 3. Serialize items array into JSON string
     const itemsJson = JSON.stringify(items);
 
-    // Save order into Turso DB
+    // 4. Insert row into Turso DB
     await turso.execute({
       sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status)
             VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
       args: [orderId, customerPhone, deliveryLocation, itemsJson, totalAmount],
     });
 
-    console.log(`[Order Created] ${orderId} for ${customerPhone}`);
+    console.log(`[Turso DB] Order saved successfully: ${orderId}`);
 
-    // TODO: Trigger Meta WhatsApp Dispatch Engine here (broadcasting to riders)
-
-    // Respond back to frontend
+    // 5. Success Response
     return res.status(201).json({
       success: true,
-      message: 'Order created successfully and queued for dispatch.',
+      message: 'Order saved to database successfully.',
       orderId: orderId,
     });
 
   } catch (error) {
-    console.error('Turso DB Error:', error);
+    console.error('[Turso DB Error]:', error);
     return res.status(500).json({ 
       success: false, 
-      message: 'Internal server error saving order.' 
+      message: 'Failed to insert order into database.',
+      error: error.message
     });
   }
 });
 
 // Start Express Server
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
