@@ -27,12 +27,9 @@ async function sendWhatsAppMessage(payload) {
   const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
   
   try {
-    // Clean Log Output: Log destination and message summary instead of raw Meta response
     const msgSummary = payload.type === 'text' 
       ? payload.text?.body 
-      : payload.type === 'interactive' 
-        ? payload.interactive?.body?.text 
-        : 'Template/Media Message';
+      : 'Interactive/Media Message';
 
     console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
 
@@ -46,11 +43,9 @@ async function sendWhatsAppMessage(payload) {
     });
 
     const data = await response.json();
-    
     if (!response.ok) {
       console.error('[WhatsApp Outbound Failed]:', data.error?.message || data);
     }
-    
     return data;
   } catch (err) {
     console.error('[Meta API Fetch Error]:', err);
@@ -75,9 +70,11 @@ async function notifyManager(messageText) {
   await sendWhatsAppMessage(payload);
 }
 
-// Helper: Broadcast Order to Active Boda Riders
+// Helper: Broadcast Order with Claim Link to Active Boda Riders
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
   const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+  const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
+  const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
   // Fetch available riders from Turso
   const ridersResult = await turso.execute(`SELECT phone_number FROM riders WHERE is_available = 1`);
@@ -88,30 +85,21 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
     return;
   }
 
-  // Send interactive dispatch message to each rider
+  // Send WhatsApp message with direct Web Claim link
   for (const rider of ridersResult.rows) {
     const riderPhone = rider.phone_number;
 
     const payload = {
       messaging_product: 'whatsapp',
       to: riderPhone,
-      type: 'interactive',
-      interactive: {
-        type: 'button',
-        body: {
-          text: `🍔 *NEW KIMANA FRIES ORDER!*\n\n*Order ID:* ${orderId}\n*Location:* ${deliveryLocation}\n*Items:* ${itemsSummary}\n*Total:* KES ${totalAmount}`
-        },
-        action: {
-          buttons: [
-            {
-              type: 'reply',
-              reply: {
-                id: `accept_${orderId}`,
-                title: 'ACCEPT ORDER 🛵'
-              }
-            }
-          ]
-        }
+      type: 'text',
+      text: { 
+        body: `🍔 *NEW KIMANA FRIES ORDER!*\n\n` +
+              `*Order ID:* ${orderId}\n` +
+              `*Location:* ${deliveryLocation}\n` +
+              `*Items:* ${itemsSummary}\n` +
+              `*Total:* KES ${totalAmount}\n\n` +
+              `👉 *Tap link to claim order:* ${claimLink}`
       }
     };
 
@@ -119,7 +107,7 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
   }
 }
 
-// 1. POST Endpoint: Create Order & Trigger Alerts
+// 1. POST Endpoint: Create Order & Broadcast Claim Link
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
@@ -149,7 +137,7 @@ app.post('/api/orders/create', async (req, res) => {
       `*Location:* ${deliveryLocation}\n` +
       `*Items:* ${itemsSummary}\n` +
       `*Total:* KES ${totalAmount}\n\n` +
-      `⏳ *Status:* Broadcasting to available riders...`
+      `⏳ *Status:* Broadcasting claim links to riders...`
     );
 
     // Broadcast Order to active riders
@@ -157,7 +145,7 @@ app.post('/api/orders/create', async (req, res) => {
 
     return res.status(201).json({
       success: true,
-      message: 'Order created, saved to database, and dispatched.',
+      message: 'Order created, saved to database, and dispatched to riders.',
       orderId: orderId,
     });
 
@@ -167,121 +155,89 @@ app.post('/api/orders/create', async (req, res) => {
   }
 });
 
-// 2. GET Endpoint: Meta Webhook Verification
-app.get('/api/whatsapp/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode && token) {
-    if (mode === 'subscribe' && token === process.env.WA_VERIFY_TOKEN) {
-      console.log('[Meta Webhook Verified]');
-      return res.status(200).send(challenge);
-    } else {
-      return res.sendStatus(403);
-    }
-  }
-});
-
-// 3. POST Endpoint: Handle Rider Interaction (Accept Button Click)
-app.post('/api/whatsapp/webhook', async (req, res) => {
-  res.sendStatus(200); // Instantly acknowledge 200 OK to Meta Cloud API
-
+// 2. POST Endpoint: Web Claim Action (Rider Clicks Link)
+app.post('/api/orders/claim', async (req, res) => {
   try {
-    const body = req.body;
-    const changeValue = body.entry?.[0]?.changes?.[0]?.value;
+    const { orderId, riderPhone } = req.body;
 
-    // Ignore delivery and read receipts
-    if (changeValue?.statuses) return;
-
-    const message = changeValue?.messages?.[0];
-    if (!message) return;
-
-    const riderPhone = String(message.from).trim(); // e.g., "254739612301"
-
-    if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
-      const buttonId = message.interactive.button_reply.id;
-      console.log(`[Webhook Button Tap] ${buttonId} from rider ${riderPhone}`);
-
-      if (buttonId.startsWith('accept_')) {
-        const orderId = buttonId.replace('accept_', '').trim();
-
-        // 1. Fetch current order status from Turso
-        const checkOrder = await turso.execute({
-          sql: `SELECT id, status FROM orders WHERE id = :id`,
-          args: { id: orderId }
-        });
-
-        console.log(`[Turso Read] Order ${orderId} check count: ${checkOrder.rows.length}`);
-
-        if (checkOrder.rows.length === 0) {
-          console.error(`[Dispatch Error] Order ${orderId} does not exist in Turso DB.`);
-          return;
-        }
-
-        const currentStatus = String(checkOrder.rows[0].status).toUpperCase();
-        console.log(`[Turso Status] Order ${orderId} current status: "${currentStatus}"`);
-
-        if (currentStatus === 'PENDING_DISPATCH') {
-          // 2. Perform Named Parameter UPDATE (Guarantees libSQL execution)
-          const updateResult = await turso.execute({
-            sql: `UPDATE orders 
-                  SET status = 'DISPATCHED', rider_id = :rider_id 
-                  WHERE id = :order_id`,
-            args: {
-              rider_id: riderPhone,
-              order_id: orderId
-            }
-          });
-
-          console.log(`[Turso Update Success] Order ${orderId} marked DISPATCHED for ${riderPhone}`);
-
-          // 3. Query Rider Name
-          let riderName = 'Active Rider';
-          try {
-            const riderQuery = await turso.execute({
-              sql: `SELECT name FROM riders WHERE phone_number = :phone`,
-              args: { phone: riderPhone }
-            });
-            if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
-              riderName = riderQuery.rows[0].name;
-            }
-          } catch (rErr) {
-            console.error('[Rider Fetch Exception]:', rErr);
-          }
-
-          // 4. Send Confirmation to Rider
-          await sendWhatsAppMessage({
-            messaging_product: 'whatsapp',
-            to: riderPhone,
-            type: 'text',
-            text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
-          });
-
-          // 5. Alert Manager via WhatsApp
-          console.log(`[Manager Alerting] Sending update to MANAGER_PHONE (${process.env.MANAGER_PHONE})...`);
-          
-          await notifyManager(
-            `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
-            `*Rider Name:* ${riderName}\n` +
-            `*Rider Phone:* ${riderPhone}\n` +
-            `*Status:* En route to Kimana Fries counter for pick up.`
-          );
-
-        } else {
-          console.log(`[Dispatch Ignored] Order ${orderId} already in state "${currentStatus}".`);
-
-          await sendWhatsAppMessage({
-            messaging_product: 'whatsapp',
-            to: riderPhone,
-            type: 'text',
-            text: { body: `⚠️ *Order Taken!* Another rider accepted order ${orderId} before you.` }
-          });
-        }
-      }
+    if (!orderId || !riderPhone) {
+      return res.status(400).json({ success: false, message: 'Missing orderId or riderPhone.' });
     }
-  } catch (err) {
-    console.error('[Webhook Processing Exception]:', err);
+
+    const cleanOrderId = String(orderId).trim();
+    const cleanPhone = String(riderPhone).trim();
+
+    // 1. Fetch current order status from Turso
+    const checkOrder = await turso.execute({
+      sql: `SELECT id, status FROM orders WHERE id = :id`,
+      args: { id: cleanOrderId }
+    });
+
+    if (checkOrder.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const currentStatus = String(checkOrder.rows[0].status).toUpperCase();
+
+    if (currentStatus === 'PENDING_DISPATCH') {
+      // 2. Update Order State to DISPATCHED
+      await turso.execute({
+        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = :rider_id WHERE id = :order_id`,
+        args: {
+          rider_id: cleanPhone,
+          order_id: cleanOrderId
+        }
+      });
+
+      console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider ${cleanPhone}`);
+
+      // 3. Fetch Rider Name
+      let riderName = 'Active Rider';
+      try {
+        const riderQuery = await turso.execute({
+          sql: `SELECT name FROM riders WHERE phone_number = :phone`,
+          args: { phone: cleanPhone }
+        });
+        if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
+          riderName = riderQuery.rows[0].name;
+        }
+      } catch (rErr) {
+        console.error('[Rider Query Error]:', rErr);
+      }
+
+      // 4. Alert Manager via WhatsApp
+      await notifyManager(
+        `🛵 *RIDER ASSIGNED! (#${cleanOrderId})*\n\n` +
+        `*Rider Name:* ${riderName}\n` +
+        `*Rider Phone:* ${cleanPhone}\n` +
+        `*Status:* En route to Kimana Fries counter for pick up.`
+      );
+
+      // 5. Send Confirmation SMS/WhatsApp to Rider
+      await sendWhatsAppMessage({
+        messaging_product: 'whatsapp',
+        to: cleanPhone,
+        type: 'text',
+        text: { body: `✅ *Order ${cleanOrderId} Claimed!* Proceed to Kimana Fries counter for pick up.` }
+      });
+
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Order claimed successfully!', 
+        orderId: cleanOrderId 
+      });
+
+    } else {
+      console.log(`[Web Claim Rejected] Order ${cleanOrderId} already claimed.`);
+      return res.status(409).json({ 
+        success: false, 
+        message: `Order ${cleanOrderId} has already been claimed by another rider.` 
+      });
+    }
+
+  } catch (error) {
+    console.error('[Web Claim Exception]:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
 
