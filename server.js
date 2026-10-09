@@ -26,22 +26,23 @@ app.get('/health', (req, res) => {
 async function sendWhatsAppMessage(payload) {
   const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
   
-  const response = await fetch(url, {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${process.env.WA_SYSTEM_USER_TOKEN}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify(payload)
-  });
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.WA_SYSTEM_USER_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
 
-  const data = await response.json();
-  if (!response.ok) {
-    console.error('[WhatsApp API Error]:', data);
+    const data = await response.json();
+    console.log('[Meta API Raw Response]:', JSON.stringify(data, null, 2));
+    return data;
+  } catch (err) {
+    console.error('[Meta API Fetch Error]:', err);
   }
-  return data;
 }
-
 // Helper: Broadcast Order with Interactive Button to Riders
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
   // Format items summary
