@@ -284,6 +284,55 @@ app.post('/api/riders/toggle-status', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
+// POST Endpoint: Send Rider Shift Portal Link via WhatsApp
+app.post('/api/riders/send-portal-link', async (req, res) => {
+  try {
+    const { phone } = req.body;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Rider phone number required.' });
+    }
+
+    const cleanPhone = String(phone).trim();
+    const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
+    const portalLink = `${frontendUrl}/rider.html?phone=${cleanPhone}`;
+
+    // Verify rider exists in Turso DB
+    const riderQuery = await turso.execute({
+      sql: `SELECT name FROM riders WHERE phone_number = :phone`,
+      args: { phone: cleanPhone }
+    });
+
+    if (riderQuery.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Rider not found in database.' });
+    }
+
+    const riderName = riderQuery.rows[0].name || 'Rider';
+
+    // Send WhatsApp Message with Link
+    await sendWhatsAppMessage({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: {
+        body: `👋 *Hello ${riderName}!*\n\n` +
+              `Here is your personal BodaSwift Shift Portal link to toggle your online/offline status:\n\n` +
+              `👉 *Manage Shift:* ${portalLink}\n\n` +
+              `_Bookmark this link on your phone for easy access during shifts!_`
+      }
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: `Shift portal link sent to ${cleanPhone}!`,
+      portalLink: portalLink
+    });
+
+  } catch (error) {
+    console.error('[Send Portal Link Exception]:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
