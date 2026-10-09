@@ -8,239 +8,165 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Enable CORS for all origins & handle preflight OPTIONS
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 // Initialize Turso Client
 const turso = createClient({
-  url: process.env.TURSO_DATABASE_URL,
-  authToken: process.env.TURSO_AUTH_TOKEN,
+  url: process.env.TURSO_DATABASE_URL,
+  authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
 // Health Check Endpoint
 app.get('/health', (req, res) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date() });
+  res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
 
 // Helper: Send WhatsApp Message via Meta Cloud API
 async function sendWhatsAppMessage(payload) {
-  const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
-  
-  try {
-    const msgSummary = payload.type === 'text' 
-      ? payload.text?.body 
-      : 'Interactive/Media Message';
+  const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
+  
+  try {
+    const msgSummary = payload.type === 'text' 
+      ? payload.text?.body 
+      : 'Interactive/Media Message';
 
-    console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
+    console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.WA_SYSTEM_USER_TOKEN}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload)
-    });
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${process.env.WA_SYSTEM_USER_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload)
+    });
 
-    const data = await response.json();
-    if (!response.ok) {
-      console.error('[WhatsApp Outbound Failed]:', data.error?.message || data);
-    }
-    return data;
-  } catch (err) {
-    console.error('[Meta API Fetch Error]:', err);
-  }
+    const data = await response.json();
+    if (!response.ok) {
+      console.error('[WhatsApp Outbound Failed]:', data.error?.message || data);
+    }
+    return data;
+  } catch (err) {
+    console.error('[Meta API Fetch Error]:', err);
+  }
 }
 
 // Helper: Notify Manager via WhatsApp
 async function notifyManager(messageText) {
-  const managerPhone = process.env.MANAGER_PHONE;
-  if (!managerPhone) {
-    console.log('[Manager Alert Error] MANAGER_PHONE environment variable is not set.');
-    return;
-  }
+  const managerPhone = process.env.MANAGER_PHONE;
+  if (!managerPhone) {
+    console.log('[Manager Alert Error] MANAGER_PHONE environment variable is not set.');
+    return;
+  }
 
-  const payload = {
-    messaging_product: 'whatsapp',
-    to: managerPhone,
-    type: 'text',
-    text: { body: messageText }
-  };
+  const payload = {
+    messaging_product: 'whatsapp',
+    to: managerPhone,
+    type: 'text',
+    text: { body: messageText }
+  };
 
-  await sendWhatsAppMessage(payload);
+  await sendWhatsAppMessage(payload);
 }
 
 // Helper: Broadcast Order with Claim Link to Active Boda Riders
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
-  const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
-  const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
-  const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
+  const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+  const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
+  const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
-  // Fetch available riders from Turso
-  const ridersResult = await turso.execute(`SELECT phone_number FROM riders WHERE is_available = 1`);
-  
-  if (ridersResult.rows.length === 0) {
-    console.log('[Dispatch] No active riders available.');
-    await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *${orderId}* was placed, but no riders are active on the platform.`);
-    return;
-  }
+  // Fetch available riders from Turso
+  const ridersResult = await turso.execute(`SELECT phone_number FROM riders WHERE is_available = 1`);
+  
+  if (ridersResult.rows.length === 0) {
+    console.log('[Dispatch] No active riders available.');
+    await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *${orderId}* was placed, but no riders are active on the platform.`);
+    return;
+  }
 
-  // Send WhatsApp message with direct Web Claim link
-  for (const rider of ridersResult.rows) {
-    const riderPhone = rider.phone_number;
+  // Send WhatsApp message with direct Web Claim link
+  for (const rider of ridersResult.rows) {
+    const riderPhone = rider.phone_number;
 
-    const payload = {
-      messaging_product: 'whatsapp',
-      to: riderPhone,
-      type: 'text',
-      text: { 
-        body: `🍔 *NEW KIMANA FRIES ORDER!*\n\n` +
-              `*Order ID:* ${orderId}\n` +
-              `*Location:* ${deliveryLocation}\n` +
-              `*Items:* ${itemsSummary}\n` +
-              `*Total:* KES ${totalAmount}\n\n` +
-              `👉 *Tap link to claim order:* ${claimLink}`
-      }
-    };
+    const payload = {
+      messaging_product: 'whatsapp',
+      to: riderPhone,
+      type: 'text',
+      text: { 
+        body: `🍔 *NEW KIMANA FRIES ORDER!*\n\n` +
+              `*Order ID:* ${orderId}\n` +
+              `*Location:* ${deliveryLocation}\n` +
+              `*Items:* ${itemsSummary}\n` +
+              `*Total:* KES ${totalAmount}\n\n` +
+              `👉 *Tap link to claim order:* ${claimLink}`
+      }
+    };
 
-    await sendWhatsAppMessage(payload);
-  }
+    await sendWhatsAppMessage(payload);
+  }
 }
 
-// 1. POST Endpoint: Create Order & Broadcast Claim Link
-app.post('/api/orders/create', async (req, res) => {
-  try {
-    const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
+// ==========================================
+// RIDER MANAGEMENT ENDPOINTS
+// ==========================================
 
-    if (!customerPhone || !deliveryLocation || !items || !totalAmount) {
-      return res.status(400).json({ success: false, message: 'Missing required order fields.' });
-    }
+// 1. POST Endpoint: Register New Rider & Initialize Shift Portal Link
+app.post('/api/riders/register', async (req, res) => {
+  try {
+    const { name, phone } = req.body;
 
-    const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    const itemsJson = JSON.stringify(items);
-    const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+    if (!name || !phone) {
+      return res.status(400).json({ success: false, message: 'Rider name and phone number required.' });
+    }
 
-    // Save order in Turso DB
-    await turso.execute({
-      sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status)
-            VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
-      args: [orderId, customerPhone, deliveryLocation, itemsJson, totalAmount],
-    });
+    const cleanPhone = String(phone).trim();
+    const cleanName = String(name).trim();
+    const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
+    const portalLink = `${frontendUrl}/rider.html?phone=${cleanPhone}`;
 
-    console.log(`[Turso DB] Saved Order: ${orderId}`);
+    // Insert or update rider in Turso DB (default is_available = 1)
+    await turso.execute({
+      sql: `INSERT INTO riders (name, phone_number, is_available) 
+            VALUES (:name, :phone, 1)
+            ON CONFLICT(phone_number) DO UPDATE SET name = :name`,
+      args: { name: cleanName, phone: cleanPhone }
+    });
 
-    // Notify Manager about the new kitchen order
-    await notifyManager(
-      `🔔 *NEW KITCHEN ORDER RECEIVED!*\n\n` +
-      `*Order ID:* ${orderId}\n` +
-      `*Customer:* ${customerPhone}\n` +
-      `*Location:* ${deliveryLocation}\n` +
-      `*Items:* ${itemsSummary}\n` +
-      `*Total:* KES ${totalAmount}\n\n` +
-      `⏳ *Status:* Broadcasting claim links to riders...`
-    );
+    console.log(`[Rider Registered] ${cleanName} (${cleanPhone})`);
 
-    // Broadcast Order to active riders
-    await broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items);
+    // Dispatch initialized Shift Portal link via WhatsApp
+    await sendWhatsAppMessage({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: {
+        body: `👋 *Welcome to BodaSwift, ${cleanName}!*\n\n` +
+              `You are registered as a BodaSwift rider for Kimana Fries.\n\n` +
+              `👉 *Your Personal Shift Portal:* ${portalLink}\n\n` +
+              `_Tap the link anytime to switch your shift status ONLINE or OFFLINE._`
+      }
+    });
 
-    return res.status(201).json({
-      success: true,
-      message: 'Order created, saved to database, and dispatched to riders.',
-      orderId: orderId,
-    });
+    return res.status(201).json({
+      success: true,
+      message: 'Rider registered and shift portal link dispatched!',
+      portalLink: portalLink
+    });
 
-  } catch (error) {
-    console.error('[Create Order Error]:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
+  } catch (error) {
+    console.error('[Register Rider Exception]:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
 });
 
-// 2. POST Endpoint: Web Claim Action (Rider Clicks Link)
-app.post('/api/orders/claim', async (req, res) => {
-  try {
-    const { orderId, riderPhone } = req.body;
-
-    if (!orderId || !riderPhone) {
-      return res.status(400).json({ success: false, message: 'Missing orderId or riderPhone.' });
-    }
-
-    const cleanOrderId = String(orderId).trim();
-    const cleanPhone = String(riderPhone).trim();
-
-    // 1. Fetch current order status from Turso
-    const checkOrder = await turso.execute({
-      sql: `SELECT id, status FROM orders WHERE id = :id`,
-      args: { id: cleanOrderId }
-    });
-
-    if (checkOrder.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Order not found.' });
-    }
-
-    const currentStatus = String(checkOrder.rows[0].status).toUpperCase();
-
-    if (currentStatus === 'PENDING_DISPATCH') {
-      // 2. Update Order State to DISPATCHED
-      await turso.execute({
-        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = :rider_id WHERE id = :order_id`,
-        args: {
-          rider_id: cleanPhone,
-          order_id: cleanOrderId
-        }
-      });
-
-      console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider ${cleanPhone}`);
-
-      // 3. Fetch Rider Name
-      let riderName = 'Active Rider';
-      try {
-        const riderQuery = await turso.execute({
-          sql: `SELECT name FROM riders WHERE phone_number = :phone`,
-          args: { phone: cleanPhone }
-        });
-        if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
-          riderName = riderQuery.rows[0].name;
-        }
-      } catch (rErr) {
-        console.error('[Rider Query Error]:', rErr);
-      }
-
-      // 4. Alert Manager via WhatsApp
-      await notifyManager(
-        `🛵 *RIDER ASSIGNED! (#${cleanOrderId})*\n\n` +
-        `*Rider Name:* ${riderName}\n` +
-        `*Rider Phone:* ${cleanPhone}\n` +
-        `*Status:* En route to Kimana Fries counter for pick up.`
-      );
-
-      // 5. Send Confirmation SMS/WhatsApp to Rider
-      await sendWhatsAppMessage({
-        messaging_product: 'whatsapp',
-        to: cleanPhone,
-        type: 'text',
-        text: { body: `✅ *Order ${cleanOrderId} Claimed!* Proceed to Kimana Fries counter for pick up.` }
-      });
-
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Order claimed successfully!', 
-        orderId: cleanOrderId 
-      });
-
-    } else {
-      console.log(`[Web Claim Rejected] Order ${cleanOrderId} already claimed.`);
-      return res.status(409).json({ 
-        success: false, 
-        message: `Order ${cleanOrderId} has already been claimed by another rider.` 
-      });
-    }
-
-  } catch (error) {
-    console.error('[Web Claim Exception]:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
-  }
-});
-// POST Endpoint: Web-Based Rider Status Toggle (Bypasses WhatsApp Webhooks)
+// 2. POST Endpoint: Web-Based Rider Status Toggle
 app.post('/api/riders/toggle-status', async (req, res) => {
   try {
     const { phone, isAvailable } = req.body;
@@ -252,7 +178,7 @@ app.post('/api/riders/toggle-status', async (req, res) => {
     const cleanPhone = String(phone).trim();
     const newStatus = isAvailable ? 1 : 0;
 
-    // 1. Check if rider exists in Turso DB
+    // Check if rider exists in Turso DB
     const riderCheck = await turso.execute({
       sql: `SELECT id, name FROM riders WHERE phone_number = :phone`,
       args: { phone: cleanPhone }
@@ -264,7 +190,7 @@ app.post('/api/riders/toggle-status', async (req, res) => {
 
     const riderName = riderCheck.rows[0].name || 'Rider';
 
-    // 2. Update is_available state in Turso
+    // Update is_available state in Turso
     await turso.execute({
       sql: `UPDATE riders SET is_available = :status WHERE phone_number = :phone`,
       args: { status: newStatus, phone: cleanPhone }
@@ -284,56 +210,145 @@ app.post('/api/riders/toggle-status', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
-// POST Endpoint: Send Rider Shift Portal Link via WhatsApp
-app.post('/api/riders/send-portal-link', async (req, res) => {
+
+// ==========================================
+// ORDER DISPATCH ENDPOINTS
+// ==========================================
+
+// 3. POST Endpoint: Create Order & Broadcast Claim Link
+app.post('/api/orders/create', async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
 
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Rider phone number required.' });
+    if (!customerPhone || !deliveryLocation || !items || !totalAmount) {
+      return res.status(400).json({ success: false, message: 'Missing required order fields.' });
     }
 
-    const cleanPhone = String(phone).trim();
-    const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
-    const portalLink = `${frontendUrl}/rider.html?phone=${cleanPhone}`;
+    const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const itemsJson = JSON.stringify(items);
+    const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
 
-    // Verify rider exists in Turso DB
-    const riderQuery = await turso.execute({
-      sql: `SELECT name FROM riders WHERE phone_number = :phone`,
-      args: { phone: cleanPhone }
+    // Save order in Turso DB
+    await turso.execute({
+      sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status)
+            VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
+      args: [orderId, customerPhone, deliveryLocation, itemsJson, totalAmount],
     });
 
-    if (riderQuery.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Rider not found in database.' });
-    }
+    console.log(`[Turso DB] Saved Order: ${orderId}`);
 
-    const riderName = riderQuery.rows[0].name || 'Rider';
+    // Notify Manager about the new kitchen order
+    await notifyManager(
+      `🔔 *NEW KITCHEN ORDER RECEIVED!*\n\n` +
+      `*Order ID:* ${orderId}\n` +
+      `*Customer:* ${customerPhone}\n` +
+      `*Location:* ${deliveryLocation}\n` +
+      `*Items:* ${itemsSummary}\n` +
+      `*Total:* KES ${totalAmount}\n\n` +
+      `⏳ *Status:* Broadcasting claim links to riders...`
+    );
 
-    // Send WhatsApp Message with Link
-    await sendWhatsAppMessage({
-      messaging_product: 'whatsapp',
-      to: cleanPhone,
-      type: 'text',
-      text: {
-        body: `👋 *Hello ${riderName}!*\n\n` +
-              `Here is your personal BodaSwift Shift Portal link to toggle your online/offline status:\n\n` +
-              `👉 *Manage Shift:* ${portalLink}\n\n` +
-              `_Bookmark this link on your phone for easy access during shifts!_`
-      }
-    });
+    // Broadcast Order to active riders
+    await broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items);
 
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
-      message: `Shift portal link sent to ${cleanPhone}!`,
-      portalLink: portalLink
+      message: 'Order created, saved to database, and dispatched to riders.',
+      orderId: orderId,
     });
 
   } catch (error) {
-    console.error('[Send Portal Link Exception]:', error);
+    console.error('[Create Order Error]:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// 4. POST Endpoint: Web Claim Action (Rider Clicks Link)
+app.post('/api/orders/claim', async (req, res) => {
+  try {
+    const { orderId, riderPhone } = req.body;
+
+    if (!orderId || !riderPhone) {
+      return res.status(400).json({ success: false, message: 'Missing orderId or riderPhone.' });
+    }
+
+    const cleanOrderId = String(orderId).trim();
+    const cleanPhone = String(riderPhone).trim();
+
+    // 1. Fetch current order status from Turso
+    const checkOrder = await turso.execute({
+      sql: `SELECT id, status FROM orders WHERE id = :id`,
+      args: { id: cleanOrderId }
+    });
+
+    if (checkOrder.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const currentStatus = String(checkOrder.rows[0].status).toUpperCase();
+
+    if (currentStatus === 'PENDING_DISPATCH') {
+      // 2. Update Order State to DISPATCHED
+      await turso.execute({
+        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = :rider_id WHERE id = :order_id`,
+        args: {
+          rider_id: cleanPhone,
+          order_id: cleanOrderId
+        }
+      });
+
+      console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider ${cleanPhone}`);
+
+      // 3. Fetch Rider Name
+      let riderName = 'Active Rider';
+      try {
+        const riderQuery = await turso.execute({
+          sql: `SELECT name FROM riders WHERE phone_number = :phone`,
+          args: { phone: cleanPhone }
+        });
+        if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
+          riderName = riderQuery.rows[0].name;
+        }
+      } catch (rErr) {
+        console.error('[Rider Query Error]:', rErr);
+      }
+
+      // 4. Alert Manager via WhatsApp
+      await notifyManager(
+        `🛵 *RIDER ASSIGNED! (#${cleanOrderId})*\n\n` +
+        `*Rider Name:* ${riderName}\n` +
+        `*Rider Phone:* ${cleanPhone}\n` +
+        `*Status:* En route to Kimana Fries counter for pick up.`
+      );
+
+      // 5. Send Confirmation WhatsApp to Rider
+      await sendWhatsAppMessage({
+        messaging_product: 'whatsapp',
+        to: cleanPhone,
+        type: 'text',
+        text: { body: `✅ *Order ${cleanOrderId} Claimed!* Proceed to Kimana Fries counter for pick up.` }
+      });
+
+      return res.status(200).json({ 
+        success: true, 
+        message: 'Order claimed successfully!', 
+        orderId: cleanOrderId 
+      });
+
+    } else {
+      console.log(`[Web Claim Rejected] Order ${cleanOrderId} already claimed.`);
+      return res.status(409).json({ 
+        success: false, 
+        message: `Order ${cleanOrderId} has already been claimed by another rider.` 
+      });
+    }
+
+  } catch (error) {
+    console.error('[Web Claim Exception]:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server listening on port ${PORT}`);
 });
