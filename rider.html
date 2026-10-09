@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BodaSwift - Rider Portal</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; padding: 24px; text-align: center; }
+    h2 { color: #d9534f; margin-top: 0; }
+    .status-badge { font-size: 1.2rem; font-weight: bold; padding: 10px 20px; border-radius: 20px; display: inline-block; margin: 15px 0; }
+    .online-badge { background: #d4edda; color: #155724; }
+    .offline-badge { background: #f8d7da; color: #721c24; }
+    button { width: 100%; padding: 14px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    .btn-online { background-color: #28a745; color: white; }
+    .btn-offline { background-color: #dc3545; color: white; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status-message { margin-top: 15px; font-size: 14px; font-weight: 500; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>🛵 Rider Shift Portal</h2>
+    <p id="riderInfo" style="color: #666; font-size: 15px;">Loading rider profile...</p>
+
+    <div id="statusBadge" class="status-badge offline-badge">UNKNOWN</div>
+
+    <button id="toggleBtn" onclick="toggleShift()">Loading...</button>
+
+    <div id="statusMsg" class="status-message"></div>
+  </div>
+
+  <script>
+    // Replace with your Render backend URL
+    const API_BASE_URL = 'https://fries-order.onrender.com';
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const riderPhone = urlParams.get('phone');
+
+    let isCurrentlyOnline = false;
+
+    const riderInfo = document.getElementById('riderInfo');
+    const statusBadge = document.getElementById('statusBadge');
+    const toggleBtn = document.getElementById('toggleBtn');
+    const statusMsg = document.getElementById('statusMsg');
+
+    if (!riderPhone) {
+      riderInfo.textContent = '❌ Invalid link. Phone number missing.';
+      toggleBtn.style.display = 'none';
+      statusBadge.style.display = 'none';
+    } else {
+      riderInfo.textContent = `Phone: ${riderPhone}`;
+      // Default initial display to Offline until user toggles
+      updateUI(false);
+    }
+
+    function updateUI(online) {
+      isCurrentlyOnline = online;
+      if (online) {
+        statusBadge.textContent = '🟢 YOU ARE ONLINE';
+        statusBadge.className = 'status-badge online-badge';
+        toggleBtn.textContent = 'SWITCH TO OFFLINE 🔴';
+        toggleBtn.className = 'btn-offline';
+      } else {
+        statusBadge.textContent = '🔴 YOU ARE OFFLINE';
+        statusBadge.className = 'status-badge offline-badge';
+        toggleBtn.textContent = 'GO ONLINE 🟢';
+        toggleBtn.className = 'btn-online';
+      }
+    }
+
+    async function toggleShift() {
+      if (!riderPhone) return;
+
+      toggleBtn.disabled = true;
+      statusMsg.textContent = 'Updating shift status...';
+
+      const targetStatus = !isCurrentlyOnline;
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/riders/toggle-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: riderPhone, isAvailable: targetStatus })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          updateUI(data.isAvailable);
+          statusMsg.style.color = '#28a745';
+          statusMsg.textContent = data.message;
+        } else {
+          statusMsg.style.color = '#dc3545';
+          statusMsg.textContent = data.message || 'Failed to update status.';
+        }
+      } catch (err) {
+        statusMsg.style.color = '#dc3545';
+        statusMsg.textContent = 'Network error. Please try again.';
+      } finally {
+        toggleBtn.disabled = false;
+      }
+    }
+  </script>
+</body>
+</html>
