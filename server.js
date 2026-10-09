@@ -185,67 +185,72 @@ app.get('/api/whatsapp/webhook', (req, res) => {
 
 // 3. POST Endpoint: Handle Rider Interaction (Accept Button Click)
 app.post('/api/whatsapp/webhook', async (req, res) => {
-  res.sendStatus(200); // Instantly acknowledge 200 OK to Meta
+  res.sendStatus(200); // Instantly acknowledge 200 OK to Meta Cloud API
 
   try {
     const body = req.body;
     const changeValue = body.entry?.[0]?.changes?.[0]?.value;
 
-    // Ignore delivery & read receipts
+    // Ignore delivery and read receipts
     if (changeValue?.statuses) return;
 
     const message = changeValue?.messages?.[0];
     if (!message) return;
 
-    const riderPhone = message.from;
+    const riderPhone = String(message.from).trim(); // e.g., "254739612301"
 
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
       const buttonId = message.interactive.button_reply.id;
-      console.log(`[Webhook Clicked] Button: ${buttonId} | Rider: ${riderPhone}`);
+      console.log(`[Webhook Button Tap] ${buttonId} from rider ${riderPhone}`);
 
       if (buttonId.startsWith('accept_')) {
         const orderId = buttonId.replace('accept_', '').trim();
 
-        // 1. Check order in Turso
-        const currentOrder = await turso.execute({
-          sql: `SELECT id, status FROM orders WHERE id = ?`,
-          args: [orderId]
+        // 1. Fetch current order status from Turso
+        const checkOrder = await turso.execute({
+          sql: `SELECT id, status FROM orders WHERE id = :id`,
+          args: { id: orderId }
         });
 
-        console.log(`[Turso Query] Order: ${orderId} | Found Rows: ${currentOrder.rows.length}`);
+        console.log(`[Turso Read] Order ${orderId} check count: ${checkOrder.rows.length}`);
 
-        if (currentOrder.rows.length === 0) {
-          console.error(`[Dispatch Error] Order ID ${orderId} does not exist in Turso DB.`);
+        if (checkOrder.rows.length === 0) {
+          console.error(`[Dispatch Error] Order ${orderId} does not exist in Turso DB.`);
           return;
         }
 
-        const orderStatus = currentOrder.rows[0].status;
-        console.log(`[Turso Status] Order ${orderId} current status: "${orderStatus}"`);
+        const currentStatus = String(checkOrder.rows[0].status).toUpperCase();
+        console.log(`[Turso Status] Order ${orderId} current status: "${currentStatus}"`);
 
-        if (orderStatus === 'PENDING_DISPATCH') {
-          // Update Order State
-          await turso.execute({
-            sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
-            args: [riderPhone, orderId]
+        if (currentStatus === 'PENDING_DISPATCH') {
+          // 2. Perform Named Parameter UPDATE (Guarantees libSQL execution)
+          const updateResult = await turso.execute({
+            sql: `UPDATE orders 
+                  SET status = 'DISPATCHED', rider_id = :rider_id 
+                  WHERE id = :order_id`,
+            args: {
+              rider_id: riderPhone,
+              order_id: orderId
+            }
           });
 
-          console.log(`[Turso DB] Order ${orderId} updated to DISPATCHED by ${riderPhone}`);
+          console.log(`[Turso Update Success] Order ${orderId} marked DISPATCHED for ${riderPhone}`);
 
-          // Fetch Rider Name
+          // 3. Query Rider Name
           let riderName = 'Active Rider';
           try {
             const riderQuery = await turso.execute({
-              sql: `SELECT name FROM riders WHERE phone_number = ?`,
-              args: [riderPhone]
+              sql: `SELECT name FROM riders WHERE phone_number = :phone`,
+              args: { phone: riderPhone }
             });
             if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
               riderName = riderQuery.rows[0].name;
             }
           } catch (rErr) {
-            console.error('[Rider Fetch Error]:', rErr);
+            console.error('[Rider Fetch Exception]:', rErr);
           }
 
-          // Confirm to Winning Rider
+          // 4. Send Confirmation to Rider
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
@@ -253,8 +258,8 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
           });
 
-          // Alert Manager
-          console.log(`[Manager Notification] Alerting MANAGER_PHONE (${process.env.MANAGER_PHONE})...`);
+          // 5. Alert Manager via WhatsApp
+          console.log(`[Manager Alerting] Sending update to MANAGER_PHONE (${process.env.MANAGER_PHONE})...`);
           
           await notifyManager(
             `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
@@ -264,8 +269,8 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           );
 
         } else {
-          console.log(`[Dispatch Ignored] Order ${orderId} is already in state "${orderStatus}".`);
-          
+          console.log(`[Dispatch Ignored] Order ${orderId} already in state "${currentStatus}".`);
+
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
@@ -276,7 +281,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       }
     }
   } catch (err) {
-    console.error('[Webhook Exception]:', err);
+    console.error('[Webhook Processing Exception]:', err);
   }
 });
 
