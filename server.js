@@ -185,52 +185,51 @@ app.get('/api/whatsapp/webhook', (req, res) => {
 
 // 3. POST Endpoint: Handle Rider Interaction (Accept Button Click)
 app.post('/api/whatsapp/webhook', async (req, res) => {
-  res.sendStatus(200); // Instantly reply 200 OK to Meta
+  res.sendStatus(200); // Instantly acknowledge 200 OK to Meta
 
   try {
     const body = req.body;
     const changeValue = body.entry?.[0]?.changes?.[0]?.value;
 
-    // Ignore Read/Delivery Status Receipts
-    if (changeValue?.statuses) {
-      return;
-    }
+    // Ignore delivery & read receipts
+    if (changeValue?.statuses) return;
 
     const message = changeValue?.messages?.[0];
     if (!message) return;
 
-    const riderPhone = message.from; // "254739612301"
+    const riderPhone = message.from;
 
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
-      const buttonId = message.interactive.button_reply.id; // "accept_KF-KP5K2"
-      console.log(`[Webhook] Processing click: ${buttonId} from ${riderPhone}`);
+      const buttonId = message.interactive.button_reply.id;
+      console.log(`[Webhook Clicked] Button: ${buttonId} | Rider: ${riderPhone}`);
 
       if (buttonId.startsWith('accept_')) {
-        const orderId = buttonId.replace('accept_', '').trim(); // "KF-KP5K2"
+        const orderId = buttonId.replace('accept_', '').trim();
 
-        // Check order status before updating to ensure atomic row target
+        // 1. Check order in Turso
         const currentOrder = await turso.execute({
           sql: `SELECT id, status FROM orders WHERE id = ?`,
           args: [orderId]
         });
 
+        console.log(`[Turso Query] Order: ${orderId} | Found Rows: ${currentOrder.rows.length}`);
+
         if (currentOrder.rows.length === 0) {
-          console.log(`[Dispatch Error] Order ID ${orderId} not found in Turso.`);
+          console.error(`[Dispatch Error] Order ID ${orderId} does not exist in Turso DB.`);
           return;
         }
 
-        const isPending = currentOrder.rows[0].status === 'PENDING_DISPATCH';
+        const orderStatus = currentOrder.rows[0].status;
+        console.log(`[Turso Status] Order ${orderId} current status: "${orderStatus}"`);
 
-        if (isPending) {
-          // Perform state update
+        if (orderStatus === 'PENDING_DISPATCH') {
+          // Update Order State
           await turso.execute({
-            sql: `UPDATE orders 
-                  SET status = 'DISPATCHED', rider_id = ? 
-                  WHERE id = ?`,
+            sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
             args: [riderPhone, orderId]
           });
 
-          console.log(`[Dispatch Success] Order ${orderId} assigned to ${riderPhone}`);
+          console.log(`[Turso DB] Order ${orderId} updated to DISPATCHED by ${riderPhone}`);
 
           // Fetch Rider Name
           let riderName = 'Active Rider';
@@ -246,7 +245,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             console.error('[Rider Fetch Error]:', rErr);
           }
 
-          // 1. Confirm to Winning Rider
+          // Confirm to Winning Rider
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
@@ -254,7 +253,9 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
           });
 
-          // 2. Alert Manager
+          // Alert Manager
+          console.log(`[Manager Notification] Alerting MANAGER_PHONE (${process.env.MANAGER_PHONE})...`);
+          
           await notifyManager(
             `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
             `*Rider Name:* ${riderName}\n` +
@@ -263,8 +264,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           );
 
         } else {
-          // Order was already taken by another rider
-          console.log(`[Dispatch Ignored] Order ${orderId} already taken (Status: ${currentOrder.rows[0].status}).`);
+          console.log(`[Dispatch Ignored] Order ${orderId} is already in state "${orderStatus}".`);
           
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
@@ -276,7 +276,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       }
     }
   } catch (err) {
-    console.error('[Webhook Processing Exception]:', err);
+    console.error('[Webhook Exception]:', err);
   }
 });
 
