@@ -173,37 +173,30 @@ app.get('/api/whatsapp/webhook', (req, res) => {
 
 // 3. POST Endpoint: Handle Rider Interaction (Accept Button Click)
 app.post('/api/whatsapp/webhook', async (req, res) => {
-  // Always respond 200 OK to Meta immediately
-  res.sendStatus(200);
+  res.sendStatus(200); // Instantly reply 200 OK to Meta
 
   try {
     const body = req.body;
     const changeValue = body.entry?.[0]?.changes?.[0]?.value;
 
-    // 1. Ignore Status Receipts (e.g., Read / Delivered receipts)
+    // Ignore Read/Delivery Status Receipts
     if (changeValue?.statuses) {
-      console.log(`[Webhook] Message status update received: ${changeValue.statuses[0]?.status}`);
-      return; // Do nothing for read receipts
-    }
-
-    // 2. Process Actual Inbound Messages (Button Clicks, Text)
-    const message = changeValue?.messages?.[0];
-    if (!message) {
-      console.log('[Webhook] Non-message webhook event ignored.');
       return;
     }
 
-    const riderPhone = message.from;
+    const message = changeValue?.messages?.[0];
+    if (!message) return;
 
-    // Handle Interactive Button Click
+    const riderPhone = message.from; // "254739612301"
+
     if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
-      const buttonId = message.interactive.button_reply.id; // e.g., "accept_KF-BXAP1"
-      console.log(`[Webhook] Interactive button clicked: ${buttonId} by ${riderPhone}`);
+      const buttonId = message.interactive.button_reply.id; // "accept_KF-KP5K2"
+      console.log(`[Webhook] Processing click: ${buttonId} from ${riderPhone}`);
 
       if (buttonId.startsWith('accept_')) {
-        const orderId = buttonId.replace('accept_', '');
+        const orderId = buttonId.replace('accept_', ''); // "KF-KP5K2"
 
-        // Atomic UPDATE in Turso DB
+        // 1. Try atomic update in Turso DB
         const updateResult = await turso.execute({
           sql: `UPDATE orders 
                 SET status = 'DISPATCHED', rider_id = ? 
@@ -211,10 +204,12 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           args: [riderPhone, orderId]
         });
 
+        console.log(`[Turso DB UPDATE Result] rowsAffected: ${updateResult.rowsAffected}`);
+
         if (updateResult.rowsAffected > 0) {
           console.log(`[Dispatch Success] Order ${orderId} assigned to ${riderPhone}`);
 
-          // Fetch rider name
+          // 2. Query Rider Name
           let riderName = 'Active Rider';
           try {
             const riderQuery = await turso.execute({
@@ -228,7 +223,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             console.error('[Rider Fetch Error]:', rErr);
           }
 
-          // 1. Confirm to Rider
+          // 3. Confirm to Winning Rider
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
@@ -236,16 +231,18 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
           });
 
-          // 2. Alert Manager
+          // 4. Alert Manager
+          console.log(`[Manager Alert] Attempting to alert manager at ${process.env.MANAGER_PHONE}...`);
           await notifyManager(
             `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
             `*Rider Name:* ${riderName}\n` +
             `*Rider Phone:* ${riderPhone}\n` +
-            `*Status:* En route to Kimana Fries counter to pick up order.`
+            `*Status:* En route to Kimana Fries counter for pick up.`
           );
 
         } else {
-          // Already taken
+          // Check why rowsAffected was 0 (already taken or invalid ID)
+          console.log(`[Dispatch Failed] Order ${orderId} was not updated (already accepted or invalid).`);
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
@@ -256,7 +253,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       }
     }
   } catch (err) {
-    console.error('[Webhook Exception]:', err);
+    console.error('[Webhook Processing Exception]:', err);
   }
 });
 
