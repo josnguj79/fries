@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kimana Fries - Claim Order</title>
+  <style>
+    body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
+    .card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; padding: 24px; text-align: center; }
+    h2 { color: #d9534f; margin-top: 0; }
+    .order-badge { background: #e9ecef; display: inline-block; padding: 6px 12px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; font-size: 1.1em; color: #333; }
+    input { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; margin-bottom: 16px; text-align: center; }
+    button { background-color: #28a745; color: white; border: none; padding: 14px; font-size: 18px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; transition: background 0.2s; }
+    button:hover { background-color: #218838; }
+    .status-message { margin-top: 16px; font-size: 15px; font-weight: 500; }
+    .success { color: #28a745; }
+    .error { color: #dc3545; }
+  </style>
+</head>
+<body>
+
+  <div class="card">
+    <h2>🛵 BodaSwift Dispatch</h2>
+    <div id="orderBadge" class="order-badge">Loading order...</div>
+
+    <form id="claimForm">
+      <label style="display:block; margin-bottom:8px; text-align:left; font-weight:600; font-size:14px; color:#555;">Confirm Your Phone Number:</label>
+      <input type="tel" id="riderPhone" placeholder="e.g. 254739612301" required>
+      <button type="submit" id="claimBtn">ACCEPT & CLAIM ORDER</button>
+    </form>
+
+    <div id="statusMessage" class="status-message"></div>
+  </div>
+
+  <script>
+    // Replace with your Render Live API URL
+    const API_BASE_URL = 'https://your-render-app.onrender.com';
+
+    // Get orderId from query parameter (?orderId=KF-XXXXX)
+    const urlParams = new URLSearchParams(window.location.search);
+    const orderId = urlParams.get('orderId');
+
+    const orderBadge = document.getElementById('orderBadge');
+    const claimForm = document.getElementById('claimForm');
+    const statusMessage = document.getElementById('statusMessage');
+    const claimBtn = document.getElementById('claimBtn');
+
+    if (!orderId) {
+      orderBadge.textContent = 'Invalid Order Link';
+      orderBadge.style.color = '#dc3545';
+      claimForm.style.display = 'none';
+    } else {
+      orderBadge.textContent = `Order ID: ${orderId}`;
+    }
+
+    claimForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const riderPhone = document.getElementById('riderPhone').value.trim();
+
+      if (!riderPhone) return;
+
+      claimBtn.disabled = true;
+      claimBtn.textContent = 'Processing...';
+      statusMessage.textContent = '';
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/orders/claim`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, riderPhone })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          statusMessage.className = 'status-message success';
+          statusMessage.innerHTML = `✅ <b>Order Claimed Successfully!</b><br>Proceed to Kimana Fries counter to collect the package.`;
+          claimForm.style.display = 'none';
+        } else {
+          statusMessage.className = 'status-message error';
+          statusMessage.innerHTML = `⚠️ <b>${data.message || 'Unable to claim order.'}</b>`;
+          claimBtn.disabled = false;
+          claimBtn.textContent = 'ACCEPT & CLAIM ORDER';
+        }
+      } catch (err) {
+        statusMessage.className = 'status-message error';
+        statusMessage.textContent = 'Network error. Please try again.';
+        claimBtn.disabled = false;
+        claimBtn.textContent = 'ACCEPT & CLAIM ORDER';
+      }
+    });
+  </script>
+</body>
+</html>
