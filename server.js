@@ -8,7 +8,13 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(cors());
+// Enable CORS for all origins & handle preflight OPTIONS
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(express.json());
 
 // Initialize Turso Client
@@ -238,6 +244,106 @@ app.post('/api/orders/claim', async (req, res) => {
   } catch (error) {
     console.error('[Web Claim Exception]:', error);
     return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
+
+// 3. GET Endpoint: Meta Webhook Verification
+app.get('/api/whatsapp/webhook', (req, res) => {
+  const mode = req.query['hub.mode'];
+  const token = req.query['hub.verify_token'];
+  const challenge = req.query['hub.challenge'];
+
+  if (mode && token) {
+    if (mode === 'subscribe' && token === process.env.WA_VERIFY_TOKEN) {
+      console.log('[Meta Webhook Verified]');
+      return res.status(200).send(challenge);
+    } else {
+      return res.sendStatus(403);
+    }
+  }
+});
+
+// 4. POST Endpoint: Meta Webhook for WhatsApp Inbound Text Commands ("ON" / "OFF")
+app.post('/api/whatsapp/webhook', async (req, res) => {
+  res.sendStatus(200); // Always respond 200 OK immediately to Meta
+
+  try {
+    const body = req.body;
+    const changeValue = body.entry?.[0]?.changes?.[0]?.value;
+
+    // Ignore status read/delivery receipts
+    if (changeValue?.statuses) return;
+
+    const message = changeValue?.messages?.[0];
+    if (!message) return;
+
+    const riderPhone = String(message.from).trim();
+
+    // Process Text Commands
+    if (message.type === 'text') {
+      const textCommand = String(message.text?.body).trim().toUpperCase();
+
+      if (['ON', 'ONLINE', 'START', 'ACTIVE'].includes(textCommand)) {
+        // Check if rider exists in Turso DB
+        const riderCheck = await turso.execute({
+          sql: `SELECT id, name FROM riders WHERE phone_number = :phone`,
+          args: { phone: riderPhone }
+        });
+
+        if (riderCheck.rows.length === 0) {
+          await sendWhatsAppMessage({
+            messaging_product: 'whatsapp',
+            to: riderPhone,
+            type: 'text',
+            text: { body: `⚠️ *Number Not Registered!* Your phone number (${riderPhone}) is not registered as a BodaSwift rider.` }
+          });
+          return;
+        }
+
+        // Set is_available = 1
+        await turso.execute({
+          sql: `UPDATE riders SET is_available = 1 WHERE phone_number = :phone`,
+          args: { phone: riderPhone }
+        });
+
+        const riderName = riderCheck.rows[0].name || 'Rider';
+        console.log(`[Rider Status] ${riderName} (${riderPhone}) is now ONLINE.`);
+
+        await sendWhatsAppMessage({
+          messaging_product: 'whatsapp',
+          to: riderPhone,
+          type: 'text',
+          text: { 
+            body: `🟢 *YOU ARE NOW ONLINE!*\n\n` +
+                  `Hello ${riderName}, you are active on BodaSwift. You will receive real-time order claim links when new Kimana Fries orders come in.\n\n` +
+                  `_Reply *OFF* anytime to stop receiving dispatches._` 
+          }
+        });
+
+      } else if (['OFF', 'OFFLINE', 'STOP', 'PAUSE'].includes(textCommand)) {
+
+        // Set is_available = 0
+        await turso.execute({
+          sql: `UPDATE riders SET is_available = 0 WHERE phone_number = :phone`,
+          args: { phone: riderPhone }
+        });
+
+        console.log(`[Rider Status] Rider (${riderPhone}) is now OFFLINE.`);
+
+        await sendWhatsAppMessage({
+          messaging_product: 'whatsapp',
+          to: riderPhone,
+          type: 'text',
+          text: { 
+            body: `🔴 *YOU ARE NOW OFFLINE.*\n\n` +
+                  `You have paused BodaSwift dispatches. You will not receive new order broadcasts.\n\n` +
+                  `_Reply *ON* when you are ready to resume shifts._` 
+          }
+        });
+      }
+    }
+  } catch (err) {
+    console.error('[Webhook Processing Exception]:', err);
   }
 });
 
