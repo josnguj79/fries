@@ -1,5 +1,5 @@
 // Render API Backend Endpoint
-const BACKEND_URL = "https://your-render-app-name.onrender.com/api/orders/create";
+const BACKEND_URL = "https://fries-v0l8.onrender.com/api/orders/create";
 
 // Sample Catalog Items
 const menuItems = [
