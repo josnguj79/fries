@@ -27,6 +27,15 @@ async function sendWhatsAppMessage(payload) {
   const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
   
   try {
+    // Clean Log Output: Log destination and message summary instead of raw Meta response
+    const msgSummary = payload.type === 'text' 
+      ? payload.text?.body 
+      : payload.type === 'interactive' 
+        ? payload.interactive?.body?.text 
+        : 'Template/Media Message';
+
+    console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
+
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -37,7 +46,11 @@ async function sendWhatsAppMessage(payload) {
     });
 
     const data = await response.json();
-    console.log('[Meta API Raw Response]:', JSON.stringify(data, null, 2));
+    
+    if (!response.ok) {
+      console.error('[WhatsApp Outbound Failed]:', data.error?.message || data);
+    }
+    
     return data;
   } catch (err) {
     console.error('[Meta API Fetch Error]:', err);
@@ -48,7 +61,7 @@ async function sendWhatsAppMessage(payload) {
 async function notifyManager(messageText) {
   const managerPhone = process.env.MANAGER_PHONE;
   if (!managerPhone) {
-    console.log('[Manager Alert] MANAGER_PHONE environment variable not configured.');
+    console.log('[Manager Alert Error] MANAGER_PHONE environment variable is not set.');
     return;
   }
 
@@ -71,7 +84,6 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
   
   if (ridersResult.rows.length === 0) {
     console.log('[Dispatch] No active riders available.');
-    // Alert manager if no riders are online
     await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *${orderId}* was placed, but no riders are active on the platform.`);
     return;
   }
@@ -194,22 +206,33 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
       console.log(`[Webhook] Processing click: ${buttonId} from ${riderPhone}`);
 
       if (buttonId.startsWith('accept_')) {
-        const orderId = buttonId.replace('accept_', ''); // "KF-KP5K2"
+        const orderId = buttonId.replace('accept_', '').trim(); // "KF-KP5K2"
 
-        // 1. Try atomic update in Turso DB
-        const updateResult = await turso.execute({
-          sql: `UPDATE orders 
-                SET status = 'DISPATCHED', rider_id = ? 
-                WHERE id = ? AND status = 'PENDING_DISPATCH'`,
-          args: [riderPhone, orderId]
+        // Check order status before updating to ensure atomic row target
+        const currentOrder = await turso.execute({
+          sql: `SELECT id, status FROM orders WHERE id = ?`,
+          args: [orderId]
         });
 
-        console.log(`[Turso DB UPDATE Result] rowsAffected: ${updateResult.rowsAffected}`);
+        if (currentOrder.rows.length === 0) {
+          console.log(`[Dispatch Error] Order ID ${orderId} not found in Turso.`);
+          return;
+        }
 
-        if (updateResult.rowsAffected > 0) {
+        const isPending = currentOrder.rows[0].status === 'PENDING_DISPATCH';
+
+        if (isPending) {
+          // Perform state update
+          await turso.execute({
+            sql: `UPDATE orders 
+                  SET status = 'DISPATCHED', rider_id = ? 
+                  WHERE id = ?`,
+            args: [riderPhone, orderId]
+          });
+
           console.log(`[Dispatch Success] Order ${orderId} assigned to ${riderPhone}`);
 
-          // 2. Query Rider Name
+          // Fetch Rider Name
           let riderName = 'Active Rider';
           try {
             const riderQuery = await turso.execute({
@@ -223,7 +246,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             console.error('[Rider Fetch Error]:', rErr);
           }
 
-          // 3. Confirm to Winning Rider
+          // 1. Confirm to Winning Rider
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
@@ -231,8 +254,7 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
             text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
           });
 
-          // 4. Alert Manager
-          console.log(`[Manager Alert] Attempting to alert manager at ${process.env.MANAGER_PHONE}...`);
+          // 2. Alert Manager
           await notifyManager(
             `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
             `*Rider Name:* ${riderName}\n` +
@@ -241,8 +263,9 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
           );
 
         } else {
-          // Check why rowsAffected was 0 (already taken or invalid ID)
-          console.log(`[Dispatch Failed] Order ${orderId} was not updated (already accepted or invalid).`);
+          // Order was already taken by another rider
+          console.log(`[Dispatch Ignored] Order ${orderId} already taken (Status: ${currentOrder.rows[0].status}).`);
+          
           await sendWhatsAppMessage({
             messaging_product: 'whatsapp',
             to: riderPhone,
