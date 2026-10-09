@@ -178,69 +178,85 @@ app.post('/api/whatsapp/webhook', async (req, res) => {
 
   try {
     const body = req.body;
+    console.log('[Webhook Incoming Raw Body]:', JSON.stringify(body, null, 2));
 
-    if (body.object && body.entry?.[0]?.changes?.[0]?.value?.messages?.[0]) {
-      const message = body.entry[0].changes[0].value.messages[0];
-      const riderPhone = message.from;
+    const changeValue = body.entry?.[0]?.changes?.[0]?.value;
+    const message = changeValue?.messages?.[0];
 
-      // Check for interactive button reply
-      if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
-        const buttonId = message.interactive.button_reply.id; // e.g., "accept_KF-BXAP1"
+    // Verify if there is a valid message in the payload
+    if (!message) {
+      console.log('[Webhook] No message field present in change payload.');
+      return;
+    }
 
-        if (buttonId.startsWith('accept_')) {
-          const orderId = buttonId.replace('accept_', '');
+    const riderPhone = message.from;
 
-          // Race Condition Handling: Atomic UPDATE on Turso DB
-          const updateResult = await turso.execute({
-            sql: `UPDATE orders 
-                  SET status = 'DISPATCHED', rider_id = ? 
-                  WHERE id = ? AND status = 'PENDING_DISPATCH'`,
-            args: [riderPhone, orderId]
-          });
+    // Check if message is an interactive button reply
+    if (message.type === 'interactive' && message.interactive?.type === 'button_reply') {
+      const buttonId = message.interactive.button_reply.id; // e.g., "accept_KF-BXAP1"
+      console.log(`[Webhook] Interactive button clicked: ${buttonId} by ${riderPhone}`);
 
-          if (updateResult.rowsAffected > 0) {
-            console.log(`[Dispatch Success] Order ${orderId} assigned to ${riderPhone}`);
+      if (buttonId.startsWith('accept_')) {
+        const orderId = buttonId.replace('accept_', '');
 
-            // Fetch rider details from Turso
+        // Atomic UPDATE in Turso DB (Prevents race conditions)
+        const updateResult = await turso.execute({
+          sql: `UPDATE orders 
+                SET status = 'DISPATCHED', rider_id = ? 
+                WHERE id = ? AND status = 'PENDING_DISPATCH'`,
+          args: [riderPhone, orderId]
+        });
+
+        console.log(`[Turso DB] Rows affected by UPDATE: ${updateResult.rowsAffected}`);
+
+        if (updateResult.rowsAffected > 0) {
+          console.log(`[Dispatch Success] Order ${orderId} assigned to ${riderPhone}`);
+
+          // Fetch rider name from Turso
+          let riderName = 'Active Rider';
+          try {
             const riderQuery = await turso.execute({
               sql: `SELECT name FROM riders WHERE phone_number = ?`,
               args: [riderPhone]
             });
-
-            const riderName = riderQuery.rows.length > 0 && riderQuery.rows[0].name 
-              ? riderQuery.rows[0].name 
-              : 'Registered Rider';
-
-            // 1. Confirm directly to the winning Rider on WhatsApp
-            await sendWhatsAppMessage({
-              messaging_product: 'whatsapp',
-              to: riderPhone,
-              type: 'text',
-              text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
-            });
-
-            // 2. Alert Manager who accepted the order
-            await notifyManager(
-              `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
-              `*Rider Name:* ${riderName}\n` +
-              `*Rider Phone:* ${riderPhone}\n` +
-              `*Status:* En route to Kimana Fries counter to pick up order.`
-            );
-
-          } else {
-            // Order was already taken by another rider
-            await sendWhatsAppMessage({
-              messaging_product: 'whatsapp',
-              to: riderPhone,
-              type: 'text',
-              text: { body: `⚠️ *Order Taken!* Another rider accepted order ${orderId} before you.` }
-            });
+            if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
+              riderName = riderQuery.rows[0].name;
+            }
+          } catch (rErr) {
+            console.error('[Rider Fetch Error]:', rErr);
           }
+
+          // 1. Send confirmation back to Rider
+          await sendWhatsAppMessage({
+            messaging_product: 'whatsapp',
+            to: riderPhone,
+            type: 'text',
+            text: { body: `✅ *Order Accepted!* Head to Kimana Fries counter for pick up. Order ID: ${orderId}` }
+          });
+
+          // 2. Alert Manager who accepted the order
+          console.log(`[Manager Alerting] Sending update to manager: ${process.env.MANAGER_PHONE}`);
+          await notifyManager(
+            `🛵 *RIDER ASSIGNED! (#${orderId})*\n\n` +
+            `*Rider Name:* ${riderName}\n` +
+            `*Rider Phone:* ${riderPhone}\n` +
+            `*Status:* En route to Kimana Fries counter to pick up order.`
+          );
+
+        } else {
+          // Order was already accepted or doesn't exist in PENDING_DISPATCH state
+          console.log(`[Dispatch Fail] Order ${orderId} was already taken or invalid.`);
+          await sendWhatsAppMessage({
+            messaging_product: 'whatsapp',
+            to: riderPhone,
+            type: 'text',
+            text: { body: `⚠️ *Order Taken!* Another rider accepted order ${orderId} before you.` }
+          });
         }
       }
     }
   } catch (err) {
-    console.error('[Webhook Processing Error]:', err);
+    console.error('[Webhook Processing Exception]:', err);
   }
 });
 
