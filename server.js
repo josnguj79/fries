@@ -240,6 +240,50 @@ app.post('/api/orders/claim', async (req, res) => {
     return res.status(500).json({ success: false, message: 'Internal server error.' });
   }
 });
+// POST Endpoint: Web-Based Rider Status Toggle (Bypasses WhatsApp Webhooks)
+app.post('/api/riders/toggle-status', async (req, res) => {
+  try {
+    const { phone, isAvailable } = req.body;
+
+    if (!phone || isAvailable === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing phone or isAvailable status.' });
+    }
+
+    const cleanPhone = String(phone).trim();
+    const newStatus = isAvailable ? 1 : 0;
+
+    // 1. Check if rider exists in Turso DB
+    const riderCheck = await turso.execute({
+      sql: `SELECT id, name FROM riders WHERE phone_number = :phone`,
+      args: { phone: cleanPhone }
+    });
+
+    if (riderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Rider phone number not registered.' });
+    }
+
+    const riderName = riderCheck.rows[0].name || 'Rider';
+
+    // 2. Update is_available state in Turso
+    await turso.execute({
+      sql: `UPDATE riders SET is_available = :status WHERE phone_number = :phone`,
+      args: { status: newStatus, phone: cleanPhone }
+    });
+
+    console.log(`[Rider Web Status] ${riderName} (${cleanPhone}) set is_available to ${newStatus}`);
+
+    return res.status(200).json({
+      success: true,
+      message: `Status updated successfully! You are now ${newStatus === 1 ? 'ONLINE' : 'OFFLINE'}.`,
+      isAvailable: newStatus === 1,
+      riderName: riderName
+    });
+
+  } catch (error) {
+    console.error('[Toggle Status Exception]:', error);
+    return res.status(500).json({ success: false, message: 'Internal server error.' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
