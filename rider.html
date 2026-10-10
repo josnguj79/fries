@@ -27,9 +27,9 @@
 
     <!-- VIEW 1: Active Shift Controls -->
     <div id="shiftSection" style="display: none;">
-      <p id="riderInfo" style="color: #666; font-size: 15px;"></p>
-      <div id="statusBadge" class="status-badge offline-badge">🔴 YOU ARE OFFLINE</div>
-      <button id="toggleBtn" class="btn-online" onclick="toggleShift()">GO ONLINE 🟢</button>
+      <p id="riderInfo" style="color: #666; font-size: 15px; font-weight: 600;"></p>
+      <div id="statusBadge" class="status-badge offline-badge">Checking status...</div>
+      <button id="toggleBtn" class="btn-online" onclick="toggleShift()" style="display: none;">Loading...</button>
     </div>
 
     <!-- VIEW 2: Self-Service Link Generator -->
@@ -61,13 +61,35 @@
     const toggleBtn = document.getElementById('toggleBtn');
     const statusMsg = document.getElementById('statusMsg');
 
-    if (riderPhone && riderPhone.trim().length >= 10) {
-      shiftSection.style.display = 'block';
-      riderInfo.textContent = `Phone: ${riderPhone.trim()}`;
-      // Default initial view to Offline (matching backend registration default = 0)
-      updateUI(false);
-    } else {
-      requestSection.style.display = 'block';
+    // Initialize page on load
+    window.addEventListener('DOMContentLoaded', async () => {
+      if (riderPhone && riderPhone.trim().length >= 10) {
+        shiftSection.style.display = 'block';
+        await fetchRiderStatus(riderPhone.trim());
+      } else {
+        requestSection.style.display = 'block';
+      }
+    });
+
+    async function fetchRiderStatus(phone) {
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/riders/status?phone=${encodeURIComponent(phone)}`);
+        const data = await response.json();
+
+        if (response.ok && data.success) {
+          riderInfo.textContent = `Rider: ${data.name} (${phone})`;
+          updateUI(data.isAvailable);
+          toggleBtn.style.display = 'block';
+        } else {
+          shiftSection.style.display = 'none';
+          requestSection.style.display = 'block';
+          statusMsg.style.color = '#dc3545';
+          statusMsg.textContent = 'Phone number not recognized. Please register below.';
+        }
+      } catch (err) {
+        statusMsg.style.color = '#dc3545';
+        statusMsg.textContent = 'Failed to connect to server.';
+      }
     }
 
     function updateUI(online) {
@@ -118,7 +140,7 @@
 
     document.getElementById('linkForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = document.getElementById('riderName'].value.trim();
+      const name = document.getElementById('riderName').value.trim();
       const phone = document.getElementById('regPhone').value.trim();
       const requestBtn = document.getElementById('requestBtn');
 
