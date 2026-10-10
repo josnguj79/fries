@@ -297,7 +297,79 @@ app.post('/api/orders/create', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+// ==========================================
+// ORDER COMPLETION & DELIVERY ENDPOINTS
+// ==========================================
 
+// 5. POST Endpoint: Mark Order as DELIVERED (Rider completes dropoff)
+app.post('/api/orders/deliver', async (req, res) => {
+  try {
+    const { orderId, riderPhone } = req.body;
+
+    if (!orderId || !riderPhone) {
+      return res.status(400).json({ success: false, message: 'Missing orderId or riderPhone.' });
+    }
+
+    const cleanOrderId = String(orderId).trim();
+    const cleanPhone = String(riderPhone).trim();
+
+    // 1. Fetch current order status from Turso
+    const checkOrder = await turso.execute({
+      sql: `SELECT status, customer_phone FROM orders WHERE id = ?`,
+      args: [cleanOrderId]
+    });
+
+    if (checkOrder.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const currentStatus = String(checkOrder.rows[0].status).toUpperCase();
+    const customerPhone = checkOrder.rows[0].customer_phone;
+
+    if (currentStatus === 'DELIVERED') {
+      return res.status(400).json({ success: false, message: 'Order is already marked as delivered.' });
+    }
+
+    // 2. Update status to DELIVERED in Turso
+    await turso.execute({
+      sql: `UPDATE orders SET status = 'DELIVERED' WHERE id = ? AND rider_id = ?`,
+      args: [cleanOrderId, cleanPhone]
+    });
+
+    console.log(`[Delivery Complete] Order ${cleanOrderId} marked DELIVERED by ${cleanPhone}`);
+
+    // 3. Notify Manager via WhatsApp
+    await notifyManager(
+      `🎉 *ORDER DELIVERED! (#${cleanOrderId})*\n\n` +
+      `*Rider:* ${cleanPhone}\n` +
+      `*Status:* Successfully delivered to customer!`
+    );
+
+    // 4. Send Confirmation WhatsApp to Customer
+    if (customerPhone) {
+      await sendWhatsAppMessage({
+        messaging_product: 'whatsapp',
+        to: customerPhone,
+        type: 'text',
+        text: { 
+          body: `🍔 *ORDER DELIVERED!*\n\n` +
+                `Your Kimana Fries order (*${cleanOrderId}*) has been delivered!\n` +
+                `Thank you for ordering with us. Enjoy your meal! 😋` 
+        }
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      message: `Order ${cleanOrderId} marked as DELIVERED!`,
+      orderId: cleanOrderId
+    });
+
+  } catch (error) {
+    console.error('[Delivery Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
 // 5. POST Endpoint: Web Claim Action (Rider Clicks Link)
 app.post('/api/orders/claim', async (req, res) => {
   try {
@@ -354,12 +426,19 @@ app.post('/api/orders/claim', async (req, res) => {
       );
 
       // 5. Send Confirmation WhatsApp to Rider
-      await sendWhatsAppMessage({
-        messaging_product: 'whatsapp',
-        to: cleanPhone,
-        type: 'text',
-        text: { body: `✅ *Order ${cleanOrderId} Claimed!* Proceed to Kimana Fries counter for pick up.` }
-      });
+      // Send Confirmation & Tracking/Delivery Link to Rider
+const trackLink = `${frontendUrl}/claim.html?orderId=${cleanOrderId}&phone=${cleanPhone}`;
+
+await sendWhatsAppMessage({
+  messaging_product: 'whatsapp',
+  to: cleanPhone,
+  type: 'text',
+  text: { 
+    body: `✅ *Order ${cleanOrderId} Claimed!*\n\n` +
+          `Proceed to Kimana Fries counter for pick up.\n\n` +
+          `👉 *Tap to Manage Order / Mark Delivered:* ${trackLink}` 
+  }
+});
 
       return res.status(200).json({ 
         success: true, 
