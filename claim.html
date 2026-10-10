@@ -3,90 +3,111 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Kimana Fries - Claim Order</title>
+  <title>BodaSwift - Claim & Deliver Order</title>
   <style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #f8f9fa; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; padding: 20px; }
-    .card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 400px; padding: 24px; text-align: center; }
+    .card { background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); width: 100%; max-width: 420px; padding: 24px; text-align: center; }
     h2 { color: #d9534f; margin-top: 0; }
-    .order-badge { background: #e9ecef; display: inline-block; padding: 6px 12px; border-radius: 20px; font-weight: bold; margin-bottom: 20px; font-size: 1.1em; color: #333; }
-    input { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; margin-bottom: 16px; text-align: center; }
-    button { background-color: #28a745; color: white; border: none; padding: 14px; font-size: 18px; border-radius: 8px; width: 100%; font-weight: bold; cursor: pointer; transition: background 0.2s; }
-    button:hover { background-color: #218838; }
-    .status-message { margin-top: 16px; font-size: 15px; font-weight: 500; }
-    .success { color: #28a745; }
-    .error { color: #dc3545; }
+    .order-box { background: #f1f3f5; padding: 15px; border-radius: 8px; margin: 15px 0; text-align: left; font-size: 15px; line-height: 1.5; }
+    input[type="tel"] { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; margin-bottom: 12px; text-align: center; }
+    button { width: 100%; padding: 14px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 8px; }
+    .btn-claim { background-color: #007bff; color: white; }
+    .btn-deliver { background-color: #28a745; color: white; }
+    button:disabled { opacity: 0.6; cursor: not-allowed; }
+    .status-msg { margin-top: 15px; font-size: 14px; font-weight: 500; }
   </style>
 </head>
 <body>
 
   <div class="card">
-    <h2>🛵 BodaSwift Dispatch</h2>
-    <div id="orderBadge" class="order-badge">Loading order...</div>
+    <h2>🛵 BodaSwift Order Action</h2>
 
-    <form id="claimForm">
-      <label style="display:block; margin-bottom:8px; text-align:left; font-weight:600; font-size:14px; color:#555;">Confirm Your Phone Number:</label>
-      <input type="tel" id="riderPhone" placeholder="e.g. 254739612301" required>
-      <button type="submit" id="claimBtn">ACCEPT & CLAIM ORDER</button>
+    <div class="order-box">
+      <strong id="displayOrderId">Order ID: Loading...</strong>
+    </div>
+
+    <form id="actionForm">
+      <input type="tel" id="riderPhone" placeholder="Enter Your Phone Number" required>
+      <button type="submit" id="actionBtn" class="btn-claim">CLAIM ORDER 🚀</button>
     </form>
 
-    <div id="statusMessage" class="status-message"></div>
+    <div id="statusMsg" class="status-msg"></div>
   </div>
 
   <script>
-    // Replace with your Render Live API URL
     const API_BASE_URL = 'https://fries-v0l8.onrender.com';
 
-    // Get orderId from query parameter (?orderId=KF-XXXXX)
     const urlParams = new URLSearchParams(window.location.search);
     const orderId = urlParams.get('orderId');
+    const phoneParam = urlParams.get('phone');
 
-    const orderBadge = document.getElementById('orderBadge');
-    const claimForm = document.getElementById('claimForm');
-    const statusMessage = document.getElementById('statusMessage');
-    const claimBtn = document.getElementById('claimBtn');
+    const displayOrderId = document.getElementById('displayOrderId');
+    const riderPhoneInput = document.getElementById('riderPhone');
+    const actionBtn = document.getElementById('actionBtn');
+    const statusMsg = document.getElementById('statusMsg');
 
-    if (!orderId) {
-      orderBadge.textContent = 'Invalid Order Link';
-      orderBadge.style.color = '#dc3545';
-      claimForm.style.display = 'none';
+    let currentAction = 'CLAIM'; // 'CLAIM' or 'DELIVER'
+
+    if (orderId) {
+      displayOrderId.textContent = `Order ID: ${orderId.trim()}`;
     } else {
-      orderBadge.textContent = `Order ID: ${orderId}`;
+      displayOrderId.textContent = `❌ Missing Order ID`;
+      actionBtn.style.display = 'none';
     }
 
-    claimForm.addEventListener('submit', async (e) => {
+    if (phoneParam) {
+      riderPhoneInput.value = phoneParam.trim();
+      // If phone is pre-filled from dispatch link, set mode to Mark as Delivered
+      setDeliverMode();
+    }
+
+    function setDeliverMode() {
+      currentAction = 'DELIVER';
+      actionBtn.textContent = 'MARK AS DELIVERED ✅';
+      actionBtn.className = 'btn-deliver';
+    }
+
+    document.getElementById('actionForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const riderPhone = document.getElementById('riderPhone').value.trim();
+      const phone = riderPhoneInput.value.trim();
 
-      if (!riderPhone) return;
+      if (!orderId || !phone) return;
 
-      claimBtn.disabled = true;
-      claimBtn.textContent = 'Processing...';
-      statusMessage.textContent = '';
+      actionBtn.disabled = true;
+      statusMsg.textContent = 'Processing request...';
+
+      const endpoint = currentAction === 'CLAIM' 
+        ? `${API_BASE_URL}/api/orders/claim` 
+        : `${API_BASE_URL}/api/orders/deliver`;
 
       try {
-        const response = await fetch(`${API_BASE_URL}/api/orders/claim`, {
+        const response = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId, riderPhone })
+          body: JSON.stringify({ orderId: orderId.trim(), riderPhone: phone })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-          statusMessage.className = 'status-message success';
-          statusMessage.innerHTML = `✅ <b>Order Claimed Successfully!</b><br>Proceed to Kimana Fries counter to collect the package.`;
-          claimForm.style.display = 'none';
+          statusMsg.style.color = '#28a745';
+          statusMsg.textContent = data.message;
+
+          if (currentAction === 'CLAIM') {
+            setDeliverMode();
+          } else {
+            actionBtn.style.display = 'none';
+            statusMsg.innerHTML = `🎉 <b>Order Complete!</b> Thank you for the delivery.`;
+          }
         } else {
-          statusMessage.className = 'status-message error';
-          statusMessage.innerHTML = `⚠️ <b>${data.message || 'Unable to claim order.'}</b>`;
-          claimBtn.disabled = false;
-          claimBtn.textContent = 'ACCEPT & CLAIM ORDER';
+          statusMsg.style.color = '#dc3545';
+          statusMsg.textContent = data.message || 'Operation failed.';
         }
       } catch (err) {
-        statusMessage.className = 'status-message error';
-        statusMessage.textContent = 'Network error. Please try again.';
-        claimBtn.disabled = false;
-        claimBtn.textContent = 'ACCEPT & CLAIM ORDER';
+        statusMsg.style.color = '#dc3545';
+        statusMsg.textContent = 'Network error. Please try again.';
+      } finally {
+        actionBtn.disabled = false;
       }
     });
   </script>
