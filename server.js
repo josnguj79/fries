@@ -131,12 +131,12 @@ app.post('/api/riders/register', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
     const portalLink = `${frontendUrl}/rider.html?phone=${cleanPhone}`;
 
-    // Insert or update rider in Turso DB (default is_available = 1)
+    // Fix: Positional parameter binding prevents ON CONFLICT driver crashes
     await turso.execute({
       sql: `INSERT INTO riders (name, phone_number, is_available) 
-            VALUES (:name, :phone, 1)
-            ON CONFLICT(phone_number) DO UPDATE SET name = :name`,
-      args: { name: cleanName, phone: cleanPhone }
+            VALUES (?, ?, 1)
+            ON CONFLICT(phone_number) DO UPDATE SET name = excluded.name`,
+      args: [cleanName, cleanPhone]
     });
 
     console.log(`[Rider Registered] ${cleanName} (${cleanPhone})`);
@@ -162,7 +162,7 @@ app.post('/api/riders/register', async (req, res) => {
 
   } catch (error) {
     console.error('[Register Rider Exception]:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
@@ -180,8 +180,8 @@ app.post('/api/riders/toggle-status', async (req, res) => {
 
     // Check if rider exists in Turso DB
     const riderCheck = await turso.execute({
-      sql: `SELECT id, name FROM riders WHERE phone_number = :phone`,
-      args: { phone: cleanPhone }
+      sql: `SELECT id, name FROM riders WHERE phone_number = ?`,
+      args: [cleanPhone]
     });
 
     if (riderCheck.rows.length === 0) {
@@ -190,10 +190,10 @@ app.post('/api/riders/toggle-status', async (req, res) => {
 
     const riderName = riderCheck.rows[0].name || 'Rider';
 
-    // Update is_available state in Turso
+    // Update is_available state in Turso using positional arguments
     await turso.execute({
-      sql: `UPDATE riders SET is_available = :status WHERE phone_number = :phone`,
-      args: { status: newStatus, phone: cleanPhone }
+      sql: `UPDATE riders SET is_available = ? WHERE phone_number = ?`,
+      args: [newStatus, cleanPhone]
     });
 
     console.log(`[Rider Web Status] ${riderName} (${cleanPhone}) set is_available to ${newStatus}`);
@@ -207,7 +207,7 @@ app.post('/api/riders/toggle-status', async (req, res) => {
 
   } catch (error) {
     console.error('[Toggle Status Exception]:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
@@ -259,7 +259,7 @@ app.post('/api/orders/create', async (req, res) => {
 
   } catch (error) {
     console.error('[Create Order Error]:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
@@ -277,8 +277,8 @@ app.post('/api/orders/claim', async (req, res) => {
 
     // 1. Fetch current order status from Turso
     const checkOrder = await turso.execute({
-      sql: `SELECT id, status FROM orders WHERE id = :id`,
-      args: { id: cleanOrderId }
+      sql: `SELECT id, status FROM orders WHERE id = ?`,
+      args: [cleanOrderId]
     });
 
     if (checkOrder.rows.length === 0) {
@@ -290,11 +290,8 @@ app.post('/api/orders/claim', async (req, res) => {
     if (currentStatus === 'PENDING_DISPATCH') {
       // 2. Update Order State to DISPATCHED
       await turso.execute({
-        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = :rider_id WHERE id = :order_id`,
-        args: {
-          rider_id: cleanPhone,
-          order_id: cleanOrderId
-        }
+        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
+        args: [cleanPhone, cleanOrderId]
       });
 
       console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider ${cleanPhone}`);
@@ -303,8 +300,8 @@ app.post('/api/orders/claim', async (req, res) => {
       let riderName = 'Active Rider';
       try {
         const riderQuery = await turso.execute({
-          sql: `SELECT name FROM riders WHERE phone_number = :phone`,
-          args: { phone: cleanPhone }
+          sql: `SELECT name FROM riders WHERE phone_number = ?`,
+          args: [cleanPhone]
         });
         if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
           riderName = riderQuery.rows[0].name;
@@ -345,7 +342,7 @@ app.post('/api/orders/claim', async (req, res) => {
 
   } catch (error) {
     console.error('[Web Claim Exception]:', error);
-    return res.status(500).json({ success: false, message: 'Internal server error.' });
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
