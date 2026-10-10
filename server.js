@@ -7,6 +7,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
 
 // Enable CORS for all origins & handle preflight OPTIONS
 app.use(cors({
