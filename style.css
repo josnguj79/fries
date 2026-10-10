@@ -236,4 +236,128 @@
       padding: 1.5rem 0.8rem;
     }
   }
-  
+  /* ==========================================
+   APPETITE BUBBLES & MCDONALD'S VIBE ENHANCEMENT
+   ========================================== */
+
+/* McDonald's Appetite Palette Overrides */
+:root {
+  --mc-red: #da291c;
+  --mc-yellow: #ffc72c;
+  --mc-dark-red: #b31217;
+  --primary: var(--mc-red);
+  --secondary: var(--mc-yellow);
+}
+
+/* Floating Bubbles Canvas Container */
+.hero {
+  position: relative;
+  overflow: hidden;
+  background: linear-gradient(135deg, #fff0f0 0%, #ffe3e3 100%);
+}
+
+/* Animated Floating Appetite Bubbles */
+.bubble {
+  position: absolute;
+  border-radius: 50%;
+  opacity: 0.7;
+  animation: floatUp 8s infinite ease-in-out;
+  pointer-events: none;
+  box-shadow: 0 4px 10px rgba(218, 41, 28, 0.15);
+}
+
+.bubble-1 {
+  width: 50px;
+  height: 50px;
+  background: radial-gradient(circle at 30% 30%, var(--mc-yellow), var(--mc-red));
+  left: 10%;
+  bottom: -60px;
+  animation-duration: 7s;
+}
+
+.bubble-2 {
+  width: 35px;
+  height: 35px;
+  background: radial-gradient(circle at 30% 30%, #fff, var(--mc-yellow));
+  left: 30%;
+  bottom: -50px;
+  animation-duration: 9s;
+  animation-delay: 2s;
+}
+
+.bubble-3 {
+  width: 60px;
+  height: 60px;
+  background: radial-gradient(circle at 30% 30%, var(--mc-red), var(--mc-dark-red));
+  left: 70%;
+  bottom: -70px;
+  animation-duration: 8s;
+  animation-delay: 1s;
+}
+
+.bubble-4 {
+  width: 25px;
+  height: 25px;
+  background: var(--mc-yellow);
+  left: 85%;
+  bottom: -40px;
+  animation-duration: 6s;
+  animation-delay: 3s;
+}
+
+/* Float Keyframes */
+@keyframes floatUp {
+  0% {
+    transform: translateY(0) scale(0.8) rotate(0deg);
+    opacity: 0;
+  }
+  20% {
+    opacity: 0.8;
+  }
+  80% {
+    opacity: 0.8;
+  }
+  100% {
+    transform: translateY(-220px) scale(1.1) rotate(360deg);
+    opacity: 0;
+  }
+}
+
+/* Card Hover Glow & Scale */
+.card {
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  border: 1px solid rgba(255, 199, 44, 0.2);
+}
+
+.card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 18px rgba(218, 41, 28, 0.18);
+  border-color: var(--mc-yellow);
+}
+
+/* Add to Cart Appetite Button Pulse */
+.add-btn {
+  background: linear-gradient(135deg, var(--mc-red) 0%, var(--mc-dark-red) 100%);
+  color: white;
+  transition: all 0.2s ease;
+  box-shadow: 0 3px 8px rgba(218, 41, 28, 0.3);
+}
+
+.add-btn:active {
+  transform: scale(0.95);
+  box-shadow: 0 1px 4px rgba(218, 41, 28, 0.5);
+}
+
+/* Cart Button Appetite Badge */
+.cart-btn {
+  background: var(--mc-yellow);
+  color: var(--mc-dark-red);
+  box-shadow: 0 0 12px rgba(255, 199, 44, 0.6);
+  animation: pulseGold 2s infinite;
+}
+
+@keyframes pulseGold {
+  0% { box-shadow: 0 0 0 0 rgba(255, 199, 44, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(255, 199, 44, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(255, 199, 44, 0); }
+}
