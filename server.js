@@ -80,7 +80,6 @@ async function notifyManager(messageText) {
 // Helper: Broadcast Order with Claim Link to Active Boda Riders
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
   const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
-  const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
   const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
   // Fetch available riders from Turso
@@ -129,7 +128,6 @@ app.post('/api/riders/register', async (req, res) => {
 
     const cleanPhone = String(phone).trim();
     const cleanName = String(name).trim();
-    const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
     const portalLink = `${frontendUrl}/rider.html?phone=${cleanPhone}`;
 
     // Insert or update rider. Defaults is_available = 0 (OFFLINE)
@@ -287,6 +285,31 @@ app.post('/api/orders/create', async (req, res) => {
     // Broadcast Order to active riders
     await broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items);
 
+    // ⏱️ 3-Minute Timeout Guardrail (Unclaimed Order Alert)
+    setTimeout(async () => {
+      try {
+        const orderCheck = await turso.execute({
+          sql: `SELECT status FROM orders WHERE id = ?`,
+          args: [orderId]
+        });
+
+        if (orderCheck.rows.length > 0) {
+          const currentStatus = String(orderCheck.rows[0].status).toUpperCase();
+          
+          if (currentStatus === 'PENDING_DISPATCH') {
+            console.log(`[Order Timeout] Order ${orderId} was unclaimed after 3 minutes.`);
+            await notifyManager(
+              `⚠️ *ORDER TIMEOUT! (#${orderId})*\n\n` +
+              `This order has been pending for 3 minutes and *no rider has claimed it*.\n\n` +
+              `👉 Please call a rider directly or assign manually!`
+            );
+          }
+        }
+      } catch (timeoutErr) {
+        console.error('[Timeout Check Exception]:', timeoutErr);
+      }
+    }, 3 * 60 * 1000); // 3 minutes in milliseconds
+
     return res.status(201).json({
       success: true,
       message: 'Order created, saved to database, and dispatched to riders.',
@@ -298,6 +321,7 @@ app.post('/api/orders/create', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+
 // ==========================================
 // ORDER COMPLETION & DELIVERY ENDPOINTS
 // ==========================================
@@ -371,7 +395,8 @@ app.post('/api/orders/deliver', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
-// 5. POST Endpoint: Web Claim Action (Rider Clicks Link)
+
+// 6. POST Endpoint: Web Claim Action (Rider Clicks Link)
 app.post('/api/orders/claim', async (req, res) => {
   try {
     const { orderId, riderPhone } = req.body;
@@ -426,20 +451,19 @@ app.post('/api/orders/claim', async (req, res) => {
         `*Status:* En route to Kimana Fries counter for pick up.`
       );
 
-      // 5. Send Confirmation WhatsApp to Rider
-      // Send Confirmation & Tracking/Delivery Link to Rider
-const trackLink = `${frontendUrl}/claim.html?orderId=${cleanOrderId}&phone=${cleanPhone}`;
+      // 5. Send Confirmation & Tracking/Delivery Link to Rider
+      const trackLink = `${frontendUrl}/claim.html?orderId=${cleanOrderId}&phone=${cleanPhone}`;
 
-await sendWhatsAppMessage({
-  messaging_product: 'whatsapp',
-  to: cleanPhone,
-  type: 'text',
-  text: { 
-    body: `✅ *Order ${cleanOrderId} Claimed!*\n\n` +
-          `Proceed to Kimana Fries counter for pick up.\n\n` +
-          `👉 *Tap to Manage Order / Mark Delivered:* ${trackLink}` 
-  }
-});
+      await sendWhatsAppMessage({
+        messaging_product: 'whatsapp',
+        to: cleanPhone,
+        type: 'text',
+        text: { 
+          body: `✅ *Order ${cleanOrderId} Claimed!*\n\n` +
+                `Proceed to Kimana Fries counter for pick up.\n\n` +
+                `👉 *Tap to Manage Order / Mark Delivered:* ${trackLink}` 
+        }
+      });
 
       return res.status(200).json({ 
         success: true, 
