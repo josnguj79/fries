@@ -212,11 +212,45 @@ app.post('/api/riders/toggle-status', async (req, res) => {
   }
 });
 
+// 3. GET Endpoint: Fetch Rider Status & Name for rider.html
+app.get('/api/riders/status', async (req, res) => {
+  try {
+    const phone = req.query.phone;
+
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone parameter required.' });
+    }
+
+    const cleanPhone = String(phone).trim();
+
+    const riderCheck = await turso.execute({
+      sql: `SELECT name, is_available FROM riders WHERE phone_number = ?`,
+      args: [cleanPhone]
+    });
+
+    if (riderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Rider not found.' });
+    }
+
+    const rider = riderCheck.rows[0];
+
+    return res.status(200).json({
+      success: true,
+      name: rider.name || 'Rider',
+      isAvailable: rider.is_available === 1
+    });
+
+  } catch (error) {
+    console.error('[Rider Status Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
+
 // ==========================================
 // ORDER DISPATCH ENDPOINTS
 // ==========================================
 
-// 3. POST Endpoint: Create Order & Broadcast Claim Link
+// 4. POST Endpoint: Create Order & Broadcast Claim Link
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
@@ -264,7 +298,7 @@ app.post('/api/orders/create', async (req, res) => {
   }
 });
 
-// 4. POST Endpoint: Web Claim Action (Rider Clicks Link)
+// 5. POST Endpoint: Web Claim Action (Rider Clicks Link)
 app.post('/api/orders/claim', async (req, res) => {
   try {
     const { orderId, riderPhone } = req.body;
