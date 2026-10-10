@@ -11,9 +11,11 @@
     .status-badge { font-size: 1.2rem; font-weight: bold; padding: 10px 20px; border-radius: 20px; display: inline-block; margin: 15px 0; }
     .online-badge { background: #d4edda; color: #155724; }
     .offline-badge { background: #f8d7da; color: #721c24; }
-    button { width: 100%; padding: 14px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; }
+    input[type="tel"], input[type="text"] { width: 100%; padding: 12px; font-size: 16px; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; margin-bottom: 12px; text-align: center; }
+    button { width: 100%; padding: 14px; font-size: 18px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; transition: 0.2s; margin-top: 8px; }
     .btn-online { background-color: #28a745; color: white; }
     .btn-offline { background-color: #dc3545; color: white; }
+    .btn-blue { background-color: #007bff; color: white; }
     button:disabled { opacity: 0.6; cursor: not-allowed; }
     .status-message { margin-top: 15px; font-size: 14px; font-weight: 500; }
   </style>
@@ -21,60 +23,57 @@
 <body>
 
   <div class="card">
-    <h2>🛵 Rider Shift Portal</h2>
-    <p id="riderInfo" style="color: #666; font-size: 15px;">Loading rider profile...</p>
+    <h2>🛵 BodaSwift Shift Portal</h2>
 
-    <div id="statusBadge" class="status-badge offline-badge">UNKNOWN</div>
+    <!-- VIEW 1: Active Shift Controls (When Phone is in URL) -->
+    <div id="shiftSection" style="display: none;">
+      <p id="riderInfo" style="color: #666; font-size: 15px;"></p>
+      <div id="statusBadge" class="status-badge offline-badge">🔴 YOU ARE OFFLINE</div>
+      <button id="toggleBtn" onclick="toggleShift()">GO ONLINE 🟢</button>
+    </div>
 
-    <button id="toggleBtn" onclick="toggleShift()">Loading...</button>
+    <!-- VIEW 2: Self-Service Link Generator (When URL Link is Missing/Broken) -->
+    <div id="requestSection" style="display: none;">
+      <p style="color: #555; font-size: 14px;">Enter your phone number below to register or get a fresh link sent to your WhatsApp.</p>
+      
+      <form id="linkForm">
+        <input type="text" id="riderName" placeholder="Your Name (e.g., Joseph)" required>
+        <input type="tel" id="regPhone" placeholder="Phone (e.g., 254739612301)" required>
+        <button type="submit" id="requestBtn" class="btn-blue">REGISTER / GET LINK 📲</button>
+      </form>
+    </div>
 
     <div id="statusMsg" class="status-message"></div>
   </div>
 
   <script>
-    // Replace with your Render backend URL
-    const API_BASE_URL = 'https://fries-v0l8.onrender.com';
+    // Replace with your Render live URL
+    const API_BASE_URL = 'https://fries-order.onrender.com';
 
     const urlParams = new URLSearchParams(window.location.search);
     const riderPhone = urlParams.get('phone');
 
     let isCurrentlyOnline = false;
 
+    const shiftSection = document.getElementById('shiftSection');
+    const requestSection = document.getElementById('requestSection');
     const riderInfo = document.getElementById('riderInfo');
     const statusBadge = document.getElementById('statusBadge');
     const toggleBtn = document.getElementById('toggleBtn');
     const statusMsg = document.getElementById('statusMsg');
 
-    if (!riderPhone) {
-      riderInfo.textContent = '❌ Invalid link. Phone number missing.';
-      toggleBtn.style.display = 'none';
-      statusBadge.style.display = 'none';
+    // Decide which view to render
+    if (riderPhone && riderPhone.trim().length >= 10) {
+      shiftSection.style.display = 'block';
+      riderInfo.textContent = `Registered Phone: ${riderPhone.trim()}`;
     } else {
-      riderInfo.textContent = `Phone: ${riderPhone}`;
-      // Default initial display to Offline until user toggles
-      updateUI(false);
+      requestSection.style.display = 'block';
     }
 
-    function updateUI(online) {
-      isCurrentlyOnline = online;
-      if (online) {
-        statusBadge.textContent = '🟢 YOU ARE ONLINE';
-        statusBadge.className = 'status-badge online-badge';
-        toggleBtn.textContent = 'SWITCH TO OFFLINE 🔴';
-        toggleBtn.className = 'btn-offline';
-      } else {
-        statusBadge.textContent = '🔴 YOU ARE OFFLINE';
-        statusBadge.className = 'status-badge offline-badge';
-        toggleBtn.textContent = 'GO ONLINE 🟢';
-        toggleBtn.className = 'btn-online';
-      }
-    }
-
+    // Toggle Online/Offline
     async function toggleShift() {
-      if (!riderPhone) return;
-
       toggleBtn.disabled = true;
-      statusMsg.textContent = 'Updating shift status...';
+      statusMsg.textContent = 'Updating status...';
 
       const targetStatus = !isCurrentlyOnline;
 
@@ -82,13 +81,24 @@
         const response = await fetch(`${API_BASE_URL}/api/riders/toggle-status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: riderPhone, isAvailable: targetStatus })
+          body: JSON.stringify({ phone: riderPhone.trim(), isAvailable: targetStatus })
         });
 
         const data = await response.json();
 
         if (response.ok) {
-          updateUI(data.isAvailable);
+          isCurrentlyOnline = data.isAvailable;
+          if (isCurrentlyOnline) {
+            statusBadge.textContent = '🟢 YOU ARE ONLINE';
+            statusBadge.className = 'status-badge online-badge';
+            toggleBtn.textContent = 'SWITCH TO OFFLINE 🔴';
+            toggleBtn.className = 'btn-offline';
+          } else {
+            statusBadge.textContent = '🔴 YOU ARE OFFLINE';
+            statusBadge.className = 'status-badge offline-badge';
+            toggleBtn.textContent = 'GO ONLINE 🟢';
+            toggleBtn.className = 'btn-online';
+          }
           statusMsg.style.color = '#28a745';
           statusMsg.textContent = data.message;
         } else {
@@ -102,6 +112,43 @@
         toggleBtn.disabled = false;
       }
     }
+
+    // Request Fresh Link / Self Register
+    document.getElementById('linkForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const name = document.getElementById('riderName').value.trim();
+      const phone = document.getElementById('regPhone').value.trim();
+      const requestBtn = document.getElementById('requestBtn');
+
+      requestBtn.disabled = true;
+      requestBtn.textContent = 'Sending WhatsApp Link...';
+      statusMsg.textContent = '';
+
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/riders/register`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, phone })
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          statusMsg.style.color = '#28a745';
+          statusMsg.innerHTML = `✅ <b>Link Sent!</b> Check your WhatsApp for your personal shift link.`;
+          document.getElementById('linkForm').reset();
+        } else {
+          statusMsg.style.color = '#dc3545';
+          statusMsg.textContent = data.message || 'Error processing request.';
+        }
+      } catch (err) {
+        statusMsg.style.color = '#dc3545';
+        statusMsg.textContent = 'Network error. Check connection.';
+      } finally {
+        requestBtn.disabled = false;
+        requestBtn.textContent = 'REGISTER / GET LINK 📲';
+      }
+    });
   </script>
 </body>
 </html>
