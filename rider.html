@@ -25,16 +25,16 @@
   <div class="card">
     <h2>🛵 BodaSwift Shift Portal</h2>
 
-    <!-- VIEW 1: Active Shift Controls (When Phone is in URL) -->
+    <!-- VIEW 1: Active Shift Controls -->
     <div id="shiftSection" style="display: none;">
       <p id="riderInfo" style="color: #666; font-size: 15px;"></p>
       <div id="statusBadge" class="status-badge offline-badge">🔴 YOU ARE OFFLINE</div>
-      <button id="toggleBtn" onclick="toggleShift()">GO ONLINE 🟢</button>
+      <button id="toggleBtn" class="btn-online" onclick="toggleShift()">GO ONLINE 🟢</button>
     </div>
 
-    <!-- VIEW 2: Self-Service Link Generator (When URL Link is Missing/Broken) -->
+    <!-- VIEW 2: Self-Service Link Generator -->
     <div id="requestSection" style="display: none;">
-      <p style="color: #555; font-size: 14px;">Enter your phone number below to register or get a fresh link sent to your WhatsApp.</p>
+      <p style="color: #555; font-size: 14px;">Enter your details below to register or get a fresh link sent to your WhatsApp.</p>
       
       <form id="linkForm">
         <input type="text" id="riderName" placeholder="Your Name (e.g., Joseph)" required>
@@ -47,8 +47,7 @@
   </div>
 
   <script>
-    // Replace with your Render live URL
-    const API_BASE_URL = 'https://fries-v0l8.onrender.com';
+    const API_BASE_URL = 'https://fries-order.onrender.com';
 
     const urlParams = new URLSearchParams(window.location.search);
     const riderPhone = urlParams.get('phone');
@@ -62,15 +61,30 @@
     const toggleBtn = document.getElementById('toggleBtn');
     const statusMsg = document.getElementById('statusMsg');
 
-    // Decide which view to render
     if (riderPhone && riderPhone.trim().length >= 10) {
       shiftSection.style.display = 'block';
-      riderInfo.textContent = `Registered Phone: ${riderPhone.trim()}`;
+      riderInfo.textContent = `Phone: ${riderPhone.trim()}`;
+      // Default initial view to Offline (matching backend registration default = 0)
+      updateUI(false);
     } else {
       requestSection.style.display = 'block';
     }
 
-    // Toggle Online/Offline
+    function updateUI(online) {
+      isCurrentlyOnline = online;
+      if (online) {
+        statusBadge.textContent = '🟢 YOU ARE ONLINE';
+        statusBadge.className = 'status-badge online-badge';
+        toggleBtn.textContent = 'SWITCH TO OFFLINE 🔴';
+        toggleBtn.className = 'btn-offline';
+      } else {
+        statusBadge.textContent = '🔴 YOU ARE OFFLINE';
+        statusBadge.className = 'status-badge offline-badge';
+        toggleBtn.textContent = 'GO ONLINE 🟢';
+        toggleBtn.className = 'btn-online';
+      }
+    }
+
     async function toggleShift() {
       toggleBtn.disabled = true;
       statusMsg.textContent = 'Updating status...';
@@ -87,18 +101,7 @@
         const data = await response.json();
 
         if (response.ok) {
-          isCurrentlyOnline = data.isAvailable;
-          if (isCurrentlyOnline) {
-            statusBadge.textContent = '🟢 YOU ARE ONLINE';
-            statusBadge.className = 'status-badge online-badge';
-            toggleBtn.textContent = 'SWITCH TO OFFLINE 🔴';
-            toggleBtn.className = 'btn-offline';
-          } else {
-            statusBadge.textContent = '🔴 YOU ARE OFFLINE';
-            statusBadge.className = 'status-badge offline-badge';
-            toggleBtn.textContent = 'GO ONLINE 🟢';
-            toggleBtn.className = 'btn-online';
-          }
+          updateUI(data.isAvailable);
           statusMsg.style.color = '#28a745';
           statusMsg.textContent = data.message;
         } else {
@@ -113,10 +116,9 @@
       }
     }
 
-    // Request Fresh Link / Self Register
     document.getElementById('linkForm').addEventListener('submit', async (e) => {
       e.preventDefault();
-      const name = document.getElementById('riderName').value.trim();
+      const name = document.getElementById('riderName'].value.trim();
       const phone = document.getElementById('regPhone').value.trim();
       const requestBtn = document.getElementById('requestBtn');
 
@@ -135,7 +137,7 @@
 
         if (response.ok) {
           statusMsg.style.color = '#28a745';
-          statusMsg.innerHTML = `✅ <b>Link Sent!</b> Check your WhatsApp for your personal shift link.`;
+          statusMsg.innerHTML = `✅ <b>Registered Offline!</b> Check WhatsApp for your personal shift link.`;
           document.getElementById('linkForm').reset();
         } else {
           statusMsg.style.color = '#dc3545';
