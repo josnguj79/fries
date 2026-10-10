@@ -30,19 +30,19 @@ app.get('/health', (req, res) => {
 
 // Helper: Send WhatsApp Message via Meta Cloud API
 async function sendWhatsAppMessage(payload) {
-  const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
+  const url = `https://graph.facebook.com/v20.0/\${process.env.WA_PHONE_NUMBER_ID}/messages`;
   
   try {
     const msgSummary = payload.type === 'text' 
       ? payload.text?.body 
       : 'Interactive/Media Message';
 
-    console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
+    console.log(`[WhatsApp Outbound] To: ${payload.to} \vert{} Message: "${msgSummary.replace(/\n/g, ' ')}"`);
 
     const response = await fetch(url, {
       method: 'POST',
       headers: {
-        'Authorization': `Bearer ${process.env.WA_SYSTEM_USER_TOKEN}`,
+        'Authorization': `Bearer \${process.env.WA_SYSTEM_USER_TOKEN}`,
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload)
@@ -78,7 +78,7 @@ async function notifyManager(messageText) {
 
 // Helper: Broadcast Order with Claim Link to Active Boda Riders
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
-  const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+  const itemsSummary = items.map(i => `${i.qty}x${i.name}`).join(', ');
   const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
   const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
@@ -87,7 +87,7 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
   
   if (ridersResult.rows.length === 0) {
     console.log('[Dispatch] No active riders available.');
-    await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *${orderId}* was placed, but no riders are active on the platform.`);
+    await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *\${orderId}* was placed, but no riders are active on the platform.`);
     return;
   }
 
@@ -101,11 +101,11 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
       type: 'text',
       text: { 
         body: `🍔 *NEW KIMANA FRIES ORDER!*\n\n` +
-              `*Order ID:* ${orderId}\n` +
-              `*Location:* ${deliveryLocation}\n` +
-              `*Items:* ${itemsSummary}\n` +
-              `*Total:* KES ${totalAmount}\n\n` +
-              `👉 *Tap link to claim order:* ${claimLink}`
+              `*Order ID:* \${orderId}\n` +
+              `*Location:* \${deliveryLocation}\n` +
+              `*Items:* \${itemsSummary}\n` +
+              `*Total:* KES \${totalAmount}\n\n` +
+              `👉 *Tap link to claim order:* \${claimLink}`
       }
     };
 
@@ -117,7 +117,7 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
 // RIDER MANAGEMENT ENDPOINTS
 // ==========================================
 
-// 1. POST Endpoint: Register New Rider & Initialize Shift Portal Link
+// 1. POST Endpoint: Register New Rider & Initialize Shift Portal Link (Defaults is_available = 0)
 app.post('/api/riders/register', async (req, res) => {
   try {
     const { name, phone } = req.body;
@@ -131,15 +131,15 @@ app.post('/api/riders/register', async (req, res) => {
     const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
     const portalLink = `${frontendUrl}/rider.html?phone=${cleanPhone}`;
 
-    // Fix: Positional parameter binding prevents ON CONFLICT driver crashes
+    // Insert or update rider. Notice `is_available = 0` on new creation/request so they start OFFLINE.
     await turso.execute({
-      sql: `INSERT INTO riders (name, phone_number, is_available) 
-            VALUES (?, ?, 1)
+      sql: `INSERT INTO riders (phone_number, name, is_available) 
+            VALUES (?, ?, 0)
             ON CONFLICT(phone_number) DO UPDATE SET name = excluded.name`,
-      args: [cleanName, cleanPhone]
+      args: [cleanPhone, cleanName]
     });
 
-    console.log(`[Rider Registered] ${cleanName} (${cleanPhone})`);
+    console.log(`[Rider Registered] ${cleanName} (${cleanPhone}) -> Initialized OFFLINE (0)`);
 
     // Dispatch initialized Shift Portal link via WhatsApp
     await sendWhatsAppMessage({
@@ -147,16 +147,17 @@ app.post('/api/riders/register', async (req, res) => {
       to: cleanPhone,
       type: 'text',
       text: {
-        body: `👋 *Welcome to BodaSwift, ${cleanName}!*\n\n` +
-              `You are registered as a BodaSwift rider for Kimana Fries.\n\n` +
-              `👉 *Your Personal Shift Portal:* ${portalLink}\n\n` +
-              `_Tap the link anytime to switch your shift status ONLINE or OFFLINE._`
+        body: `👋 *Welcome to BodaSwift, \${cleanName}!*\n\n` +
+              `You are registered as a BodaSwift rider for Kimana Fries.\n` +
+              `You are currently marked as *OFFLINE*.\n\n` +
+              `👉 *Your Personal Shift Portal:* \${portalLink}\n\n` +
+              `_Open the link to toggle your status ONLINE when you're ready for shifts._`
       }
     });
 
     return res.status(201).json({
       success: true,
-      message: 'Rider registered and shift portal link dispatched!',
+      message: 'Rider registered as offline and shift portal link dispatched!',
       portalLink: portalLink
     });
 
@@ -180,7 +181,7 @@ app.post('/api/riders/toggle-status', async (req, res) => {
 
     // Check if rider exists in Turso DB
     const riderCheck = await turso.execute({
-      sql: `SELECT id, name FROM riders WHERE phone_number = ?`,
+      sql: `SELECT name, is_available FROM riders WHERE phone_number = ?`,
       args: [cleanPhone]
     });
 
@@ -196,11 +197,11 @@ app.post('/api/riders/toggle-status', async (req, res) => {
       args: [newStatus, cleanPhone]
     });
 
-    console.log(`[Rider Web Status] ${riderName} (${cleanPhone}) set is_available to ${newStatus}`);
+    console.log(`[Rider Web Status] \${riderName} (${cleanPhone}) set is_available to${newStatus}`);
 
     return res.status(200).json({
       success: true,
-      message: `Status updated successfully! You are now ${newStatus === 1 ? 'ONLINE' : 'OFFLINE'}.`,
+      message: `Status updated successfully! You are now \${newStatus === 1 ? 'ONLINE' : 'OFFLINE'}.`,
       isAvailable: newStatus === 1,
       riderName: riderName
     });
@@ -224,9 +225,9 @@ app.post('/api/orders/create', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Missing required order fields.' });
     }
 
-    const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    const orderId = `KF-\${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const itemsJson = JSON.stringify(items);
-    const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+    const itemsSummary = items.map(i => `${i.qty}x${i.name}`).join(', ');
 
     // Save order in Turso DB
     await turso.execute({
@@ -235,16 +236,16 @@ app.post('/api/orders/create', async (req, res) => {
       args: [orderId, customerPhone, deliveryLocation, itemsJson, totalAmount],
     });
 
-    console.log(`[Turso DB] Saved Order: ${orderId}`);
+    console.log(`[Turso DB] Saved Order: \${orderId}`);
 
     // Notify Manager about the new kitchen order
     await notifyManager(
       `🔔 *NEW KITCHEN ORDER RECEIVED!*\n\n` +
-      `*Order ID:* ${orderId}\n` +
-      `*Customer:* ${customerPhone}\n` +
-      `*Location:* ${deliveryLocation}\n` +
-      `*Items:* ${itemsSummary}\n` +
-      `*Total:* KES ${totalAmount}\n\n` +
+      `*Order ID:* \${orderId}\n` +
+      `*Customer:* \${customerPhone}\n` +
+      `*Location:* \${deliveryLocation}\n` +
+      `*Items:* \${itemsSummary}\n` +
+      `*Total:* KES \${totalAmount}\n\n` +
       `⏳ *Status:* Broadcasting claim links to riders...`
     );
 
@@ -277,7 +278,7 @@ app.post('/api/orders/claim', async (req, res) => {
 
     // 1. Fetch current order status from Turso
     const checkOrder = await turso.execute({
-      sql: `SELECT id, status FROM orders WHERE id = ?`,
+      sql: `SELECT status FROM orders WHERE id = ?`,
       args: [cleanOrderId]
     });
 
@@ -294,7 +295,7 @@ app.post('/api/orders/claim', async (req, res) => {
         args: [cleanPhone, cleanOrderId]
       });
 
-      console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider ${cleanPhone}`);
+      console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider${cleanPhone}`);
 
       // 3. Fetch Rider Name
       let riderName = 'Active Rider';
@@ -312,9 +313,9 @@ app.post('/api/orders/claim', async (req, res) => {
 
       // 4. Alert Manager via WhatsApp
       await notifyManager(
-        `🛵 *RIDER ASSIGNED! (#${cleanOrderId})*\n\n` +
-        `*Rider Name:* ${riderName}\n` +
-        `*Rider Phone:* ${cleanPhone}\n` +
+        `🛵 *RIDER ASSIGNED! (#\${cleanOrderId})*\n\n` +
+        `*Rider Name:* \${riderName}\n` +
+        `*Rider Phone:* \${cleanPhone}\n` +
         `*Status:* En route to Kimana Fries counter for pick up.`
       );
 
@@ -323,7 +324,7 @@ app.post('/api/orders/claim', async (req, res) => {
         messaging_product: 'whatsapp',
         to: cleanPhone,
         type: 'text',
-        text: { body: `✅ *Order ${cleanOrderId} Claimed!* Proceed to Kimana Fries counter for pick up.` }
+        text: { body: `✅ *Order \${cleanOrderId} Claimed!* Proceed to Kimana Fries counter for pick up.` }
       });
 
       return res.status(200).json({ 
@@ -333,10 +334,10 @@ app.post('/api/orders/claim', async (req, res) => {
       });
 
     } else {
-      console.log(`[Web Claim Rejected] Order ${cleanOrderId} already claimed.`);
+      console.log(`[Web Claim Rejected] Order \${cleanOrderId} already claimed.`);
       return res.status(409).json({ 
         success: false, 
-        message: `Order ${cleanOrderId} has already been claimed by another rider.` 
+        message: `Order \${cleanOrderId} has already been claimed by another rider.` 
       });
     }
 
@@ -347,5 +348,5 @@ app.post('/api/orders/claim', async (req, res) => {
 });
 
 app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
+  console.log(`Server listening on port \${PORT});
 });
