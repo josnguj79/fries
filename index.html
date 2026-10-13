@@ -5,6 +5,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kimana Fries | Fast Delivery</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#e63946">
+<link rel="apple-touch-icon" href="/icons/icon-192.png">
 </head>
 <body>
 
@@ -14,6 +17,7 @@
     <button class="cart-btn" id="openCartBtn">
       Cart (<span id="cartCount">0</span>)
     </button>
+    <button id="installBtn" class="install-btn" style="display: none;">📲 Install App</button>
   </header>
 
   <!-- Hero Banner -->
@@ -71,6 +75,51 @@
 
   <!-- ADDED: Script tag at the end of the body -->
   <script src="app.js"></script>
- 
+ <script>
+  // 1. Register Service Worker
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('/sw.js')
+        .then((reg) => console.log('Service Worker registered! Scope:', reg.scope))
+        .catch((err) => console.error('Service Worker registration failed:', err));
+    });
+  }
+
+  // 2. Handle PWA Install Prompt
+  let deferredPrompt;
+  const installBtn = document.getElementById('installBtn');
+
+  window.addEventListener('beforeinstallprompt', (e) => {
+    // Prevent Chrome 67 and earlier from automatically showing the prompt
+    e.preventDefault();
+    // Stash the event so it can be triggered later.
+    deferredPrompt = e;
+    // Show your custom install button
+    if (installBtn) {
+      installBtn.style.display = 'block';
+    }
+  });
+
+  if (installBtn) {
+    installBtn.addEventListener('click', async () => {
+      if (!deferredPrompt) return;
+      // Show the install prompt
+      deferredPrompt.prompt();
+      // Wait for the user to respond to the prompt
+      const { outcome } = await deferredPrompt.userChoice;
+      console.log(`User response to the install prompt: ${outcome}`);
+      // Clear the deferred prompt variable
+      deferredPrompt = null;
+      installBtn.style.display = 'none';
+    });
+  }
+
+  window.addEventListener('appinstalled', () => {
+    console.log('Kimana Fries was successfully installed.');
+    if (installBtn) {
+      installBtn.style.display = 'none';
+    }
+  });
+</script>
 </body>
 </html>
