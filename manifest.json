@@ -1,24 +1,24 @@
 {
-    "name": "Kimana Fries Delivery",
-    "short_name": "KimanaFries",
-    "description": "Hot, fresh, and delivered at top speed via BodaSwift!",
-    "start_url": "/",
-    "scope": "/",
-    "display": "standalone",
-    "background_color": "#1d3557",
-    "theme_color": "#e63946",
-    "icons": [
-      {
-        "src": "/icons/icon-192.png",
-        "sizes": "192x192",
-        "type": "image/png",
-        "purpose": "any maskable"
-      },
-      {
-        "src": "/icons/icon-512.png",
-        "sizes": "512x512",
-        "type": "image/png",
-        "purpose": "any maskable"
-      }
-    ]
-  }
+  "name": "Kimana Fries Delivery",
+  "short_name": "KimanaFries",
+  "description": "Hot, fresh, and delivered at top speed via BodaSwift!",
+  "start_url": "/fries/",
+  "scope": "/fries/",
+  "display": "standalone",
+  "background_color": "#1d3557",
+  "theme_color": "#e63946",
+  "icons": [
+    {
+      "src": "/fries/icons/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/fries/icons/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
