@@ -361,4 +361,19 @@
   70% { box-shadow: 0 0 0 10px rgba(255, 199, 44, 0); }
   100% { box-shadow: 0 0 0 0 rgba(255, 199, 44, 0); }
 }
+.install-btn {
+  background: var(--mc-yellow);
+  color: var(--mc-dark-red);
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 20px;
+  font-weight: bold;
+  cursor: pointer;
+  margin-left: 10px;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+  transition: transform 0.2s;
+}
 
+.install-btn:hover {
+  transform: scale(1.05);
+}
