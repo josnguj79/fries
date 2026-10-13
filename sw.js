@@ -1,17 +1,18 @@
-const CACHE_NAME = 'kimana-fries-v1';
+const CACHE_NAME = 'kimana-fries-v2';
 const assetsToCache = [
-  '/',
-  '/index.html',
-  '/claim.html',
-  '/rider.html',
-  '/manifest.json'
+  './',
+  './index.html',
+  './manifest.json'
 ];
 
-// Install Event
+// Install Event (Resilient Caching)
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      return cache.addAll(assetsToCache);
+      // Use add instead of addAll so one missing file won't abort everything
+      return Promise.allSettled(
+        assetsToCache.map(path => cache.add(path).catch(err => console.warn('Failed to cache:', path, err)))
+      );
     })
   );
   self.skipWaiting();
