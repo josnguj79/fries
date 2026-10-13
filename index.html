@@ -76,49 +76,41 @@
   <!-- ADDED: Script tag at the end of the body -->
   <script src="app.js"></script>
  <script>
-  // 1. Register Service Worker
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', () => {
-      navigator.serviceWorker.register('/sw.js')
+      // Automatically detect subfolder or root deployment path
+      const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+      const swUrl = basePath + '/sw.js';
+
+      navigator.serviceWorker.register(swUrl, { scope: basePath + '/' })
         .then((reg) => console.log('Service Worker registered! Scope:', reg.scope))
         .catch((err) => console.error('Service Worker registration failed:', err));
     });
   }
 
-  // 2. Handle PWA Install Prompt
+  // PWA Install Prompt Logic
   let deferredPrompt;
   const installBtn = document.getElementById('installBtn');
 
   window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent Chrome 67 and earlier from automatically showing the prompt
     e.preventDefault();
-    // Stash the event so it can be triggered later.
     deferredPrompt = e;
-    // Show your custom install button
-    if (installBtn) {
-      installBtn.style.display = 'block';
-    }
+    if (installBtn) installBtn.style.display = 'block';
   });
 
   if (installBtn) {
     installBtn.addEventListener('click', async () => {
       if (!deferredPrompt) return;
-      // Show the install prompt
       deferredPrompt.prompt();
-      // Wait for the user to respond to the prompt
       const { outcome } = await deferredPrompt.userChoice;
-      console.log(`User response to the install prompt: ${outcome}`);
-      // Clear the deferred prompt variable
+      console.log(`User response: ${outcome}`);
       deferredPrompt = null;
       installBtn.style.display = 'none';
     });
   }
 
   window.addEventListener('appinstalled', () => {
-    console.log('Kimana Fries was successfully installed.');
-    if (installBtn) {
-      installBtn.style.display = 'none';
-    }
+    if (installBtn) installBtn.style.display = 'none';
   });
 </script>
 </body>
