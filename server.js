@@ -251,75 +251,88 @@ app.get('/api/riders/status', async (req, res) => {
 
 // 4. POST Endpoint: Create Order & Broadcast Claim Link
 app.post('/api/orders/create', async (req, res) => {
-  try {
-    const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
+  try {
+    const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
 
-    if (!customerPhone || !deliveryLocation || !items || !totalAmount) {
-      return res.status(400).json({ success: false, message: 'Missing required order fields.' });
-    }
+    if (!customerPhone || !deliveryLocation || !items || !totalAmount) {
+      return res.status(400).json({ success: false, message: 'Missing required order fields.' });
+    }
 
-    const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
-    const itemsJson = JSON.stringify(items);
-    const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+    const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+    
+    // Safely serialize items array/object to JSON string
+    const itemsJson = typeof items === 'string' ? items : JSON.stringify(items);
+    const parsedItemsArr = Array.isArray(items) ? items : (typeof items === 'string' ? JSON.parse(items) : []);
+    const itemsSummary = parsedItemsArr.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ');
 
-    // Save order in Turso DB
-    await turso.execute({
-      sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status)
-            VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
-      args: [orderId, customerPhone, deliveryLocation, itemsJson, totalAmount],
-    });
+    // 1. Save order into Turso DB (Ensures database insertion completes first)
+    await turso.execute({
+      sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status)
+            VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
+      args: [
+        String(orderId), 
+        String(customerPhone).trim(), 
+        String(deliveryLocation).trim(), 
+        itemsJson, 
+        Number(totalAmount)
+      ],
+    });
 
-    console.log(`[Turso DB] Saved Order: ${orderId}`);
+    console.log(`[Turso DB] Saved Order: ${orderId}`);
 
-    // Notify Manager about the new kitchen order
-    await notifyManager(
-      `🔔 *NEW KITCHEN ORDER RECEIVED!*\n\n` +
-      `*Order ID:* ${orderId}\n` +
-      `*Customer:* ${customerPhone}\n` +
-      `*Location:* ${deliveryLocation}\n` +
-      `*Items:* ${itemsSummary}\n` +
-      `*Total:* KES ${totalAmount}\n\n` +
-      `⏳ *Status:* Broadcasting claim links to riders...`
-    );
+    // 2. Safely trigger background alerts (Non-blocking so WhatsApp API issues don't trigger a 500 response)
+    Promise.allSettled([
+      notifyManager(
+        `🔔 *NEW KITCHEN ORDER RECEIVED!*\n\n` +
+        `*Order ID:* ${orderId}\n` +
+        `*Customer:* ${customerPhone}\n` +
+        `*Location:* ${deliveryLocation}\n` +
+        `*Items:* ${itemsSummary}\n` +
+        `*Total:* KES ${totalAmount}\n\n` +
+        `⏳ *Status:* Broadcasting claim links to riders...`
+      ),
+      broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, parsedItemsArr)
+    ]).catch(err => console.error('[Background Dispatch Alert Error]:', err));
 
-    // Broadcast Order to active riders
-    await broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items);
+    // 3. ⏱️ 3-Minute Timeout Guardrail (Unclaimed Order Alert)
+    setTimeout(async () => {
+      try {
+        const orderCheck = await turso.execute({
+          sql: `SELECT status FROM orders WHERE id = ?`,
+          args: [orderId]
+        });
 
-    // ⏱️ 3-Minute Timeout Guardrail (Unclaimed Order Alert)
-    setTimeout(async () => {
-      try {
-        const orderCheck = await turso.execute({
-          sql: `SELECT status FROM orders WHERE id = ?`,
-          args: [orderId]
-        });
+        if (orderCheck.rows.length > 0) {
+          const currentStatus = String(orderCheck.rows[0].status).toUpperCase();
+          
+          if (currentStatus === 'PENDING_DISPATCH') {
+            console.log(`[Order Timeout] Order ${orderId} was unclaimed after 3 minutes.`);
+            await notifyManager(
+              `⚠️ *ORDER TIMEOUT! (#${orderId})*\n\n` +
+              `This order has been pending for 3 minutes and *no rider has claimed it*.\n\n` +
+              `👉 Please call a rider directly or assign manually!`
+            );
+          }
+        }
+      } catch (timeoutErr) {
+        console.error('[Timeout Check Exception]:', timeoutErr);
+      }
+    }, 3 * 60 * 1000);
 
-        if (orderCheck.rows.length > 0) {
-          const currentStatus = String(orderCheck.rows[0].status).toUpperCase();
-          
-          if (currentStatus === 'PENDING_DISPATCH') {
-            console.log(`[Order Timeout] Order ${orderId} was unclaimed after 3 minutes.`);
-            await notifyManager(
-              `⚠️ *ORDER TIMEOUT! (#${orderId})*\n\n` +
-              `This order has been pending for 3 minutes and *no rider has claimed it*.\n\n` +
-              `👉 Please call a rider directly or assign manually!`
-            );
-          }
-        }
-      } catch (timeoutErr) {
-        console.error('[Timeout Check Exception]:', timeoutErr);
-      }
-    }, 3 * 60 * 1000); // 3 minutes in milliseconds
+    // 4. Return success response immediately to frontend app.js
+    return res.status(201).json({
+      success: true,
+      message: 'Order created, saved to database, and dispatched to riders.',
+      orderId: orderId,
+    });
 
-    return res.status(201).json({
-      success: true,
-      message: 'Order created, saved to database, and dispatched to riders.',
-      orderId: orderId,
-    });
-
-  } catch (error) {
-    console.error('[Create Order Error]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
+  } catch (error) {
+    console.error('[Create Order Exception Details]:', error);
+    return res.status(500).json({ 
+      success: false, 
+      message: error.message || 'Database error occurred during order creation.' 
+    });
+  }
 });
 
 // ==========================================
