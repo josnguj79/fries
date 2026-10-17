@@ -112,36 +112,39 @@
     }
 
     function renderOrders(orders) {
-      const tbody = document.getElementById('ordersTableBody');
-      document.getElementById('orderCount').textContent = `${orders.length} orders`;
+  const tbody = document.getElementById('ordersTableBody');
+  document.getElementById('orderCount').textContent = `${orders.length} orders`;
 
-      if (!orders || orders.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">No orders recorded yet.</td></tr>`;
-        return;
-      }
+  if (!orders || orders.length === 0) {
+    tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">No orders recorded yet.</td></tr>`;
+    return;
+  }
 
-      tbody.innerHTML = orders.map(o => {
-        let badgeClass = 'badge-pending';
-        if (o.status === 'DISPATCHED') badgeClass = 'badge-dispatched';
-        if (o.status === 'DELIVERED') badgeClass = 'badge-delivered';
+  tbody.innerHTML = orders.map(o => {
+    let badgeClass = 'badge-pending';
+    if (o.status === 'DISPATCHED') badgeClass = 'badge-dispatched';
+    if (o.status === 'DELIVERED') badgeClass = 'badge-delivered';
 
-        return `
-          <tr>
-            <td><strong>#${o.id}</strong></td>
-            <td>${o.customer_phone}</td>
-            <td>${o.delivery_location}</td>
-            <td>KES ${o.total_amount}</td>
-            <td><span class="badge ${badgeClass}">${o.status}</span></td>
-            <td>
-              ${o.status === 'PENDING_DISPATCH' ? `
-                <button class="btn-reassign" onclick="reassignOrder('\${o.id}')">Assign Rider</button>
-              ` : `<span style="color: #888; font-size: 0.75rem;">Assigned</span>`}
-            </td>
-          </tr>
-        `;
-      }).join('');
-    }
-
+    return `
+      <tr>
+        <td>
+          <span style="background: var(--dark); color: var(--mc-yellow); padding: 0.35rem 0.7rem; border-radius: 6px; font-weight: 800; font-size: 0.95rem; font-family: monospace; letter-spacing: 0.5px; display: inline-block;">
+            #${o.id}
+          </span>
+        </td>
+        <td><strong>${o.customer_phone}</strong></td>
+        <td>${o.delivery_location}</td>
+        <td><strong>KES ${o.total_amount}</strong></td>
+        <td><span class="badge ${badgeClass}">${o.status}</span></td>
+        <td>
+          ${o.status === 'PENDING_DISPATCH' ? `
+            <button class="btn-reassign" onclick="reassignOrder('\${o.id}')">Assign Rider</button>
+          ` : `<span style="color: #888; font-size: 0.75rem;">Assigned</span>`}
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
     function renderRiders(riders) {
       const tbody = document.getElementById('ridersTableBody');
       if (!riders || riders.length === 0) {
