@@ -318,7 +318,7 @@ app.post('/api/orders/create', async (req, res) => {
   }
 });
 
-// 5. POST Endpoint: Mark Order as DELIVERED
+// 5. POST Endpoint: Mark Order as DELIVERED (Rider completes dropoff)
 app.post('/api/orders/deliver', async (req, res) => {
   try {
     const { orderId, riderPhone } = req.body;
@@ -330,8 +330,9 @@ app.post('/api/orders/deliver', async (req, res) => {
     const cleanOrderId = String(orderId).trim();
     const cleanPhone = String(riderPhone).trim();
 
+    // 1. Fetch current order status from Turso
     const checkOrder = await turso.execute({
-      sql: `SELECT status, customer_phone FROM orders WHERE id = ?`,
+      sql: `SELECT status, customer_phone, rider_id FROM orders WHERE id = ?`,
       args: [cleanOrderId]
     });
 
@@ -346,19 +347,22 @@ app.post('/api/orders/deliver', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Order is already marked as delivered.' });
     }
 
+    // 2. Update status to DELIVERED in Turso
     await turso.execute({
-      sql: `UPDATE orders SET status = 'DELIVERED' WHERE id = ? AND rider_id = ?`,
-      args: [cleanOrderId, cleanPhone]
+      sql: `UPDATE orders SET status = 'DELIVERED', rider_id = ? WHERE id = ?`,
+      args: [cleanPhone, cleanOrderId]
     });
 
     console.log(`[Delivery Complete] Order ${cleanOrderId} marked DELIVERED by ${cleanPhone}`);
 
+    // 3. Notify Manager via WhatsApp
     await notifyManager(
       `🎉 *ORDER DELIVERED! (#${cleanOrderId})*\n\n` +
       `*Rider:* ${cleanPhone}\n` +
       `*Status:* Successfully delivered to customer!`
     );
 
+    // 4. Send Confirmation WhatsApp to Customer
     if (customerPhone) {
       await sendWhatsAppMessage({
         messaging_product: 'whatsapp',
@@ -383,7 +387,6 @@ app.post('/api/orders/deliver', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
-
 // 6. POST Endpoint: Web Claim Action
 app.post('/api/orders/claim', async (req, res) => {
   try {
