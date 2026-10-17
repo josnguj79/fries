@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kimana Fries - Kitchen & Ops Manager</title>
+  <style>
+    :root {
+      --mc-red: #da291c;
+      --mc-yellow: #ffc72c;
+      --dark: #1d3557;
+      --light: #f8f9fa;
+      --success: #28a745;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--light); color: #333; padding-bottom: 2rem; }
+
+    .header { background: var(--dark); color: white; padding: 1rem 1.5rem; display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 1.3rem; font-weight: bold; color: var(--mc-yellow); }
+
+    .container { max-width: 1100px; margin: 1.5rem auto; padding: 0 1rem; display: grid; grid-template-columns: 2fr 1fr; gap: 1.5rem; }
+
+    @media (max-width: 768px) {
+      .container { grid-template-columns: 1fr; }
+    }
+
+    .card { background: white; border-radius: 12px; padding: 1.2rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 1rem; }
+    .card h2 { font-size: 1.1rem; color: var(--dark); margin-bottom: 1rem; border-bottom: 2px solid #edf2f7; padding-bottom: 0.5rem; display: flex; justify-content: space-between; align-items: center; }
+
+    /* Tables */
+    table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
+    th, td { text-align: left; padding: 0.6rem 0.4rem; border-bottom: 1px solid #edf2f7; }
+    th { color: #666; font-weight: 600; }
+
+    /* Status Badges */
+    .badge { padding: 0.2rem 0.5rem; border-radius: 12px; font-size: 0.75rem; font-weight: bold; display: inline-block; }
+    .badge-pending { background: #fff3cd; color: #856404; }
+    .badge-dispatched { background: #cce5ff; color: #004085; }
+    .badge-delivered { background: #d4edda; color: #155724; }
+
+    .btn-reassign { background: var(--mc-yellow); border: none; padding: 0.3rem 0.6rem; border-radius: 4px; font-weight: bold; cursor: pointer; font-size: 0.75rem; }
+  </style>
+</head>
+<body>
+
+  <header class="header">
+    <div class="logo">🍳 Kimana Fries Operations Center</div>
+    <button onclick="fetchAdminData()" style="background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 0.4rem 0.8rem; border-radius: 6px; cursor: pointer;">Refresh Live Data 🔄</button>
+  </header>
+
+  <div class="container">
+    <!-- Live Orders Column -->
+    <div>
+      <div class="card">
+        <h2>📋 Live Orders Stream <span id="orderCount" style="font-size: 0.85rem; color: #888;">0 orders</span></h2>
+        <table>
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Customer</th>
+              <th>Location</th>
+              <th>Total</th>
+              <th>Status</th>
+              <th>Action</th>
+            </tr>
+          </thead>
+          <tbody id="ordersTableBody">
+            <tr><td colspan="6" style="text-align: center; color: #888;">Loading orders...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Active Riders & Commission Column -->
+    <div>
+      <div class="card">
+        <h2>🛵 Active Riders & Shift Stats</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Rider</th>
+              <th>Status</th>
+              <th>Trips</th>
+            </tr>
+          </thead>
+          <tbody id="ridersTableBody">
+            <tr><td colspan="3" style="text-align: center; color: #888;">Loading riders...</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'https://fries-v0l8.onrender.com';
+    let availableRidersList = [];
+
+    async function fetchAdminData() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/overview`);
+        const data = await res.json();
+
+        if (res.ok) {
+          availableRidersList = data.riders;
+          renderOrders(data.orders);
+          renderRiders(data.riders);
+        }
+      } catch (err) {
+        console.error('Failed to fetch admin overview:', err);
+      }
+    }
+
+    function renderOrders(orders) {
+      const tbody = document.getElementById('ordersTableBody');
+      document.getElementById('orderCount').textContent = `${orders.length} orders`;
+
+      if (!orders || orders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #888;">No orders recorded yet.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = orders.map(o => {
+        let badgeClass = 'badge-pending';
+        if (o.status === 'DISPATCHED') badgeClass = 'badge-dispatched';
+        if (o.status === 'DELIVERED') badgeClass = 'badge-delivered';
+
+        return `
+          <tr>
+            <td><strong>#${o.id}</strong></td>
+            <td>${o.customer_phone}</td>
+            <td>${o.delivery_location}</td>
+            <td>KES ${o.total_amount}</td>
+            <td><span class="badge ${badgeClass}">${o.status}</span></td>
+            <td>
+              ${o.status === 'PENDING_DISPATCH' ? `
+                <button class="btn-reassign" onclick="reassignOrder('\${o.id}')">Assign Rider</button>
+              ` : `<span style="color: #888; font-size: 0.75rem;">Assigned</span>`}
+            </td>
+          </tr>
+        `;
+      }).join('');
+    }
+
+    function renderRiders(riders) {
+      const tbody = document.getElementById('ridersTableBody');
+      if (!riders || riders.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="3" style="text-align: center; color: #888;">No riders registered.</td></tr>`;
+        return;
+      }
+
+      tbody.innerHTML = riders.map(r => `
+        <tr>
+          <td><strong>${r.name}</strong><br><small style="color: #777;">${r.phone}</small></td>
+          <td>
+            <span class="badge ${r.isAvailable ? 'badge-delivered' : 'badge-pending'}">
+              ${r.isAvailable ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </td>
+          <td><strong>${r.completedTrips}</strong> trips</td>
+        </tr>
+      `).join('');
+    }
+
+    async function reassignOrder(orderId) {
+      if (availableRidersList.length === 0) {
+        alert('No riders registered on the system.');
+        return;
+      }
+
+      const riderOptions = availableRidersList
+        .map((r, i) => `${i + 1}. ${r.name} (${r.phone}) - ${r.isAvailable ? 'ONLINE' : 'OFFLINE'}`)
+        .join('\n');
+
+      const choice = prompt(`Select rider number to assign order ${orderId}:\n\n${riderOptions}`);
+      if (!choice) return;
+
+      const selectedIndex = parseInt(choice) - 1;
+      if (isNaN(selectedIndex) || !availableRidersList[selectedIndex]) {
+        alert('Invalid selection.');
+        return;
+      }
+
+      const selectedRider = availableRidersList[selectedIndex];
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/reassign`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, targetRiderPhone: selectedRider.phone })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✅ Order ${orderId} assigned to ${selectedRider.name}!`);
+          fetchAdminData();
+        } else {
+          alert(data.message || 'Failed to reassign order.');
+        }
+      } catch (err) {
+        alert('Network error.');
+      }
+    }
+
+    // Auto refresh every 15 seconds
+    fetchAdminData();
+    setInterval(fetchAdminData, 15000);
+  </script>
+</body>
+</html>
