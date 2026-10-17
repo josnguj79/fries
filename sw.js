@@ -1,17 +1,19 @@
-const CACHE_NAME = 'kimana-fries-v2';
+const CACHE_NAME = 'kimana-fries-v3';
 const assetsToCache = [
   './',
   './index.html',
+  './rider.html',
+  './claim.html',
+  './rider-dashboard.html',
   './manifest.json'
 ];
 
-// Install Event (Resilient Caching)
+// Install Event
 self.addEventListener('install', (event) => {
   event.waitUntil(
     caches.open(CACHE_NAME).then((cache) => {
-      // Use add instead of addAll so one missing file won't abort everything
       return Promise.allSettled(
-        assetsToCache.map(path => cache.add(path).catch(err => console.warn('Failed to cache:', path, err)))
+        assetsToCache.map(path => cache.add(path).catch(err => console.warn('Cache skip:', path)))
       );
     })
   );
@@ -24,9 +26,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) => {
       return Promise.all(
         keys.map((key) => {
-          if (key !== CACHE_NAME) {
-            return caches.delete(key);
-          }
+          if (key !== CACHE_NAME) return caches.delete(key);
         })
       );
     })
@@ -34,8 +34,15 @@ self.addEventListener('activate', (event) => {
   self.clients.claim();
 });
 
-// Fetch Event
+// Fetch Event (CRITICAL: Bypass cross-origin API calls like Render)
 self.addEventListener('fetch', (event) => {
+  const url = new URL(event.request.url);
+
+  // If the request is going to an external API (Render), do not intercept!
+  if (url.origin !== location.origin) {
+    return; // Let the browser handle cross-origin API requests normally
+  }
+
   event.respondWith(
     fetch(event.request).catch(() => {
       return caches.match(event.request);
