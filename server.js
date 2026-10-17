@@ -661,6 +661,104 @@ app.get('/api/orders/track/:orderId', async (req, res) => {
   }
 });
 
+// ==========================================
+// OPERATIONS & MANAGER ENDPOINTS
+// ==========================================
+
+// 1. GET Endpoint: Kitchen Admin Overview (Live Orders & Shift Stats)
+app.get('/api/admin/overview', async (req, res) => {
+  try {
+    // Fetch all active/pending orders
+    const liveOrdersResult = await turso.execute(`
+      SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
+      FROM orders 
+      ORDER BY created_at DESC 
+      LIMIT 50
+    `);
+
+    // Fetch active riders
+    const ridersResult = await turso.execute(`
+      SELECT phone_number, name, is_available 
+      FROM riders
+    `);
+
+    // Calculate daily earnings summary per rider (from DELIVERED orders)
+    const earningsResult = await turso.execute(`
+      SELECT rider_id, COUNT(*) as completed_trips, SUM(total_amount) as total_revenue 
+      FROM orders 
+      WHERE status = 'DELIVERED' 
+      GROUP BY rider_id
+    `);
+
+    const earningsMap = {};
+    for (const row of earningsResult.rows) {
+      if (row.rider_id) {
+        earningsMap[row.rider_id] = {
+          completedTrips: row.completed_trips,
+          totalRevenue: row.total_revenue
+        };
+      }
+    }
+
+    const ridersWithStats = ridersResult.rows.map(r => ({
+      phone: r.phone_number,
+      name: r.name || 'Rider',
+      isAvailable: r.is_available === 1,
+      completedTrips: earningsMap[r.phone_number]?.completedTrips || 0,
+      totalRevenue: earningsMap[r.phone_number]?.totalRevenue || 0
+    }));
+
+    return res.status(200).json({
+      success: true,
+      orders: liveOrdersResult.rows,
+      riders: ridersWithStats
+    });
+
+  } catch (error) {
+    console.error('[Admin Overview Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 2. POST Endpoint: Manual Order Reassignment by Manager
+app.post('/api/admin/reassign', async (req, res) => {
+  try {
+    const { orderId, targetRiderPhone } = req.body;
+
+    if (!orderId || !targetRiderPhone) {
+      return res.status(400).json({ success: false, message: 'Missing orderId or targetRiderPhone.' });
+    }
+
+    const cleanOrderId = String(orderId).trim();
+    const cleanPhone = String(targetRiderPhone).trim();
+
+    // Reassign order status to DISPATCHED under target rider
+    await turso.execute({
+      sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
+      args: [cleanPhone, cleanOrderId]
+    });
+
+    console.log(`[Admin Action] Reassigned Order ${cleanOrderId} to rider ${cleanPhone}`);
+
+    // Notify Rider via WhatsApp
+    await sendWhatsAppMessage({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: {
+        body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${cleanOrderId})*\n\n` +
+              `Manager assigned order ${cleanOrderId} directly to you.\n` +
+              `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
+      }
+    });
+
+    return res.status(200).json({ success: true, message: `Order ${cleanOrderId} assigned to ${cleanPhone}.` });
+
+  } catch (error) {
+    console.error('[Reassign Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
