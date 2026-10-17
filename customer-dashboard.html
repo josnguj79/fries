@@ -174,55 +174,70 @@
     }
 
     function renderOrders(orders, containerId, isActiveTab) {
-      const container = document.getElementById(containerId);
-      if (!orders || orders.length === 0) {
-        container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isActiveTab ? 'active' : 'past'} orders found.</p>`;
-        return;
-      }
+  const container = document.getElementById(containerId);
+  if (!orders || orders.length === 0) {
+    container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isActiveTab ? 'active' : 'past'} orders found.</p>`;
+    return;
+  }
 
-      container.innerHTML = orders.map(order => {
-        const itemsSummary = Array.isArray(order.items)
-          ? order.items.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ')
-          : 'Order details';
+  container.innerHTML = orders.map(order => {
+    const itemsSummary = Array.isArray(order.items)
+      ? order.items.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ')
+      : 'Order details';
 
-        let statusBadge = '<span class="badge badge-pending">⏳ Cooking / Pending Dispatch</span>';
-        let cardClass = '';
+    let statusBadge = '<span class="badge badge-pending">⏳ Cooking / Pending Dispatch</span>';
+    let cardClass = '';
 
-        if (order.status === 'DISPATCHED') {
-          statusBadge = '<span class="badge badge-dispatched">🛵 Rider En Route</span>';
-          cardClass = 'dispatched';
-        } else if (order.status === 'DELIVERED') {
-          statusBadge = '<span class="badge badge-delivered">✅ Delivered</span>';
-          cardClass = 'delivered';
-        }
-
-        const riderPhoneClean = order.riderPhone ? String(order.riderPhone).replace(/\D/g, '') : '';
-        const riderWaLink = `https://wa.me/${riderPhoneClean}?text=Hello%20${encodeURIComponent(order.riderName || 'Rider')},%20regarding%20my%20order%20${order.id}`;
-
-        return `
-          <div class="order-card ${cardClass}">
-            <div class="order-header">
-              <span>🆔 #${order.id}</span>
-              <span>KES ${order.totalAmount}</span>
-            </div>
-            <div class="order-details">
-              <p><strong>📍 Delivery To:</strong> ${order.deliveryLocation}</p>
-              <p><strong>🍟 Items:</strong> ${itemsSummary}</p>
-              <p style="margin-top: 6px;">${statusBadge}</p>
-            </div>
-            ${order.riderName ? `
-              <div class="rider-box">
-                <div>
-                  <strong>🛵 Assigned Rider:</strong> \${order.riderName}
-                </div>
-                <a href="\${riderWaLink}" target="_blank" class="rider-btn">WhatsApp Rider 💬</a>
-              </div>
-            ` : ''}
-          </div>
-        `;
-      }).join('');
+    if (order.status === 'DISPATCHED') {
+      statusBadge = '<span class="badge badge-dispatched">🛵 Rider En Route</span>';
+      cardClass = 'dispatched';
+    } else if (order.status === 'DELIVERED') {
+      statusBadge = '<span class="badge badge-delivered">✅ Delivered</span>';
+      cardClass = 'delivered';
     }
 
+    const riderPhoneClean = order.riderPhone ? String(order.riderPhone).replace(/\D/g, '') : '';
+    const riderWaLink = `https://wa.me/${riderPhoneClean}?text=Hello%20${encodeURIComponent(order.riderName || 'Rider')},%20regarding%20my%20Kimana%20Fries%20order%20${order.id}`;
+
+    // Dynamic Rider Information Box
+    let riderBoxHtml = '';
+    if (order.riderName) {
+      // Rider has claimed the order
+      riderBoxHtml = `
+        <div class="rider-box">
+          <div>
+            <strong>🛵 Assigned Rider:</strong> ${order.riderName}
+          </div>
+          <a href="${riderWaLink}" target="_blank" class="rider-btn">WhatsApp Rider 💬</a>
+        </div>
+      `;
+    } else if (order.status !== 'DELIVERED') {
+      // Order is still pending dispatch
+      riderBoxHtml = `
+        <div class="rider-box" style="background: #fff8e6; border: 1px dashed #ffc72c;">
+          <div>
+            <strong>🛵 Rider Status:</strong> 📡 Searching for nearby BodaSwift rider...
+          </div>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="order-card ${cardClass}">
+        <div class="order-header">
+          <span>🆔 #${order.id}</span>
+          <span>KES ${order.totalAmount}</span>
+        </div>
+        <div class="order-details">
+          <p><strong>📍 Delivery To:</strong> ${order.deliveryLocation}</p>
+          <p><strong>🍟 Items:</strong> ${itemsSummary}</p>
+          <p style="margin-top: 6px;">${statusBadge}</p>
+        </div>
+        ${riderBoxHtml}
+      </div>
+    `;
+  }).join('');
+}
     function switchTab(tab) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
