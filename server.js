@@ -526,6 +526,140 @@ app.get('/api/orders/rider', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+// ==========================================
+// CUSTOMER DASHBOARD ENDPOINTS
+// ==========================================
+
+// 1. GET Endpoint: Fetch Active and History Orders for a Customer
+app.get('/api/orders/customer', async (req, res) => {
+  try {
+    const rawPhone = req.query.phone;
+
+    if (!rawPhone) {
+      return res.status(400).json({ success: false, message: 'Phone parameter required.' });
+    }
+
+    const cleanPhone = String(rawPhone).trim();
+    const phoneNoPlus = cleanPhone.replace(/^\+/, '');
+    const phoneLocal = cleanPhone.startsWith('254') ? '0' + cleanPhone.slice(3) : cleanPhone;
+
+    // Fetch all orders matching customer phone variants
+    const ordersResult = await turso.execute({
+      sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
+            FROM orders 
+            WHERE customer_phone = ? OR customer_phone = ? OR customer_phone = ? OR customer_phone = ?
+            ORDER BY created_at DESC`,
+      args: [cleanPhone, `+${phoneNoPlus}`, phoneNoPlus, phoneLocal]
+    });
+
+    // Fetch all riders to attach rider details (Name & Phone) to assigned orders
+    const ridersResult = await turso.execute(`SELECT phone_number, name FROM riders`);
+    const riderMap = {};
+    for (const r of ridersResult.rows) {
+      riderMap[r.phone_number] = r.name || 'BodaSwift Rider';
+    }
+
+    const active = [];
+    const history = [];
+
+    for (const row of ordersResult.rows) {
+      let parsedItems = [];
+      try {
+        parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
+      } catch (e) {
+        parsedItems = [];
+      }
+
+      const riderName = row.rider_id ? (riderMap[row.rider_id] || 'BodaSwift Rider') : null;
+
+      const orderObj = {
+        id: row.id,
+        customerPhone: row.customer_phone,
+        deliveryLocation: row.delivery_location,
+        items: parsedItems,
+        totalAmount: row.total_amount,
+        status: row.status,
+        riderName: riderName,
+        riderPhone: row.rider_id || null,
+        createdAt: row.created_at
+      };
+
+      if (row.status === 'DELIVERED') {
+        history.push(orderObj);
+      } else {
+        // PENDING_DISPATCH or DISPATCHED
+        active.push(orderObj);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      active: active,
+      history: history
+    });
+
+  } catch (error) {
+    console.error('[Customer Orders Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
+// 2. GET Endpoint: Track Single Order Status
+app.get('/api/orders/track/:orderId', async (req, res) => {
+  try {
+    const { orderId } = req.params;
+    if (!orderId) {
+      return res.status(400).json({ success: false, message: 'Order ID is required.' });
+    }
+
+    const orderResult = await turso.execute({
+      sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
+            FROM orders WHERE id = ?`,
+      args: [String(orderId).trim()]
+    });
+
+    if (orderResult.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    const row = orderResult.rows[0];
+    let parsedItems = [];
+    try {
+      parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
+    } catch (e) {
+      parsedItems = [];
+    }
+
+    let riderName = null;
+    if (row.rider_id) {
+      const riderRes = await turso.execute({
+        sql: `SELECT name FROM riders WHERE phone_number = ?`,
+        args: [row.rider_id]
+      });
+      if (riderRes.rows.length > 0) {
+        riderName = riderRes.rows[0].name;
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      order: {
+        id: row.id,
+        customerPhone: row.customer_phone,
+        deliveryLocation: row.delivery_location,
+        items: parsedItems,
+        totalAmount: row.total_amount,
+        status: row.status,
+        riderName: riderName,
+        riderPhone: row.rider_id,
+        createdAt: row.created_at
+      }
+    });
+
+  } catch (error) {
+    console.error('[Track Order Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
 
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
