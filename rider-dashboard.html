@@ -210,40 +210,44 @@
       }
     }
 
-    // Render Helper
-    function renderOrders(orders, containerId, isPending) {
-      const container = document.getElementById(containerId);
-      if (!orders || orders.length === 0) {
-        container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isPending ? 'active assigned' : 'completed'} orders found.</p>`;
-        return;
-      }
+    // Render Helper with Interactive Navigation Links
+function renderOrders(orders, containerId, isPending) {
+  const container = document.getElementById(containerId);
+  if (!orders || orders.length === 0) {
+    container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isPending ? 'active assigned' : 'completed'} orders found.</p>`;
+    return;
+  }
 
-      container.innerHTML = orders.map(order => {
-        const itemsSummary = Array.isArray(order.items) 
-          ? order.items.map(i => `${i.qty}x ${i.name}`).join(', ') 
-          : 'Order details';
+  container.innerHTML = orders.map(order => {
+    const itemsSummary = Array.isArray(order.items) 
+      ? order.items.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ') 
+      : 'Order details';
 
-        return `
-          <div class="order-card ${!isPending ? 'delivered' : ''}">
-            <div class="order-header">
-              <span>#${order.id}</span>
-              <span>KES ${order.totalAmount}</span>
-            </div>
-            <div class="order-details">
-              <p><strong>Location:</strong> ${order.deliveryLocation}</p>
-              <p><strong>Customer:</strong> ${order.customerPhone}</p>
-              <p><strong>Items:</strong> ${itemsSummary}</p>
-            </div>
-            ${isPending ? `
-              <button class="btn-action" onclick="markDelivered('\${order.id}')">MARK AS DELIVERED ✅</button>
-            ` : `
-              <span class="badge-delivered">DELIVERED</span>
-            `}
-          </div>
-        `;
-      }).join('');
-    }
+    // Format phones and map links
+    const cleanCustomerPhone = String(order.customerPhone || '').replace(/\D/g, '');
+    const whatsappLink = `https://wa.me/${cleanCustomerPhone}?text=Hello,%20this%20is%20your%20BodaSwift%20rider%20with%20your%20Kimana%20Fries%20order%20(${order.id})`;
+    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.deliveryLocation || '')}`;
 
+    return `
+      <div class="order-card ${!isPending ? 'delivered' : ''}" id="card-${order.id}">
+        <div class="order-header">
+          <span>🆔 #${order.id}</span>
+          <span>KES ${order.totalAmount}</span>
+        </div>
+        <div class="order-details">
+          <p><strong>📍 Location:</strong> <a href="${mapsLink}" target="_blank" style="color: #007bff; text-decoration: underline;">${order.deliveryLocation} 🗺️</a></p>
+          <p><strong>📞 Customer:</strong> <a href="${whatsappLink}" target="_blank" style="color: #25D366; font-weight: bold; text-decoration: none;">${order.customerPhone} 💬</a></p>
+          <p><strong>🍟 Items:</strong> ${itemsSummary}</p>
+        </div>
+        ${isPending ? `
+          <button class="btn-action" id="btn-${order.id}" onclick="markDelivered('${order.id}')">MARK AS DELIVERED ✅</button>
+        ` : `
+          <span class="badge-delivered">DELIVERED</span>
+        `}
+      </div>
+    `;
+  }).join('');
+}
     // Quick Deliver Action from Dashboard
     async function markDelivered(orderId) {
       const phone = localStorage.getItem('bodaswift_rider_phone');
