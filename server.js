@@ -484,7 +484,65 @@ app.post('/api/orders/claim', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+// 7. GET Endpoint: Fetch Active (Assigned) and Completed Orders for a Specific Rider
+app.get('/api/orders/rider', async (req, res) => {
+  try {
+    const phone = req.query.phone;
 
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone parameter required.' });
+    }
+
+    const cleanPhone = String(phone).trim();
+
+    // Fetch assigned (DISPATCHED) and DELIVERED orders for this rider
+    const ordersResult = await turso.execute({
+      sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, created_at 
+            FROM orders 
+            WHERE rider_id = ? 
+            ORDER BY created_at DESC`,
+      args: [cleanPhone]
+    });
+
+    const pending = [];
+    const completed = [];
+
+    for (const row of ordersResult.rows) {
+      let parsedItems = [];
+      try {
+        parsedItems = JSON.parse(row.items);
+      } catch (e) {
+        parsedItems = [];
+      }
+
+      const orderObj = {
+        id: row.id,
+        customerPhone: row.customer_phone,
+        deliveryLocation: row.delivery_location,
+        items: parsedItems,
+        totalAmount: row.total_amount,
+        status: row.status,
+        createdAt: row.created_at
+      };
+
+      if (row.status === 'DISPATCHED') {
+        pending.push(orderObj);
+      } else if (row.status === 'DELIVERED') {
+        completed.push(orderObj);
+      }
+    }
+
+    return res.status(200).json({
+      success: true,
+      pending: pending,
+      completed: completed
+    });
+
+  } catch (error) {
+    console.error('[Rider Orders Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
