@@ -732,34 +732,48 @@ app.post('/api/admin/reassign', async (req, res) => {
     const cleanOrderId = String(orderId).trim();
     const cleanPhone = String(targetRiderPhone).trim();
 
-    // Reassign order status to DISPATCHED under target rider
+    // 1. Check if order exists
+    const orderCheck = await turso.execute({
+      sql: `SELECT id FROM orders WHERE id = ?`,
+      args: [cleanOrderId]
+    });
+
+    if (orderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Order not found.' });
+    }
+
+    // 2. Explicitly update status to DISPATCHED and store target rider in rider_id
     await turso.execute({
       sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
       args: [cleanPhone, cleanOrderId]
     });
 
-    console.log(`[Admin Action] Reassigned Order ${cleanOrderId} to rider ${cleanPhone}`);
+    console.log(`[Admin Action Success] Order ${cleanOrderId} status changed to DISPATCHED for rider ${cleanPhone}`);
 
-    // Notify Rider via WhatsApp
-    await sendWhatsAppMessage({
+    // 3. Dispatch WhatsApp Notification to assigned Rider in background
+    sendWhatsAppMessage({
       messaging_product: 'whatsapp',
       to: cleanPhone,
       type: 'text',
       text: {
         body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${cleanOrderId})*\n\n` +
-              `Manager assigned order ${cleanOrderId} directly to you.\n` +
+              `Manager assigned order ${cleanOrderId} directly to you.\n\n` +
               `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
       }
+    }).catch(err => console.error('[WhatsApp Reassign Error]:', err));
+
+    return res.status(200).json({
+      success: true,
+      message: `Order ${cleanOrderId} reassigned successfully to ${cleanPhone}!`,
+      orderId: cleanOrderId,
+      status: 'DISPATCHED'
     });
 
-    return res.status(200).json({ success: true, message: `Order ${cleanOrderId} assigned to ${cleanPhone}.` });
-
   } catch (error) {
-    console.error('[Reassign Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error('[Reassign Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
-
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
