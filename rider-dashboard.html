@@ -1,0 +1,241 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>BodaSwift - Rider Dashboard</title>
+  <style>
+    :root {
+      --mc-red: #da291c;
+      --mc-yellow: #ffc72c;
+      --dark: #1d3557;
+      --light: #f8f9fa;
+      --success: #28a745;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--light); color: #333; padding-bottom: 2rem; }
+
+    /* Header */
+    .header { background: var(--dark); color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; }
+    .logo { font-size: 1.2rem; font-weight: bold; color: var(--mc-yellow); }
+    .logout-btn { background: none; border: 1px solid rgba(255,255,255,0.3); color: white; padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+
+    .container { max-width: 600px; margin: 1rem auto; padding: 0 1rem; }
+
+    /* Profile / Status Card */
+    .profile-card { background: white; border-radius: 12px; padding: 1.2rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+    .rider-info h3 { color: var(--dark); font-size: 1.1rem; }
+    .rider-info p { color: #666; font-size: 0.85rem; margin-top: 2px; }
+
+    /* Toggle Switch */
+    .switch-container { display: flex; align-items: center; gap: 8px; }
+    .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+    .switch input { opacity: 0; width: 0; height: 0; }
+    .slider { position: absolute; cursor: pointer; inset: 0; background-color: #ccc; transition: .3s; border-radius: 26px; }
+    .slider:before { position: absolute; content: ""; height: 20px; width: 20px; left: 3px; bottom: 3px; background-color: white; transition: .3s; border-radius: 50%; }
+    input:checked + .slider { background-color: var(--success); }
+    input:checked + .slider:before { transform: translateX(24px); }
+    .status-label { font-size: 0.8rem; font-weight: bold; text-align: center; display: block; margin-top: 4px; }
+
+    /* Tabs */
+    .tabs { display: flex; background: #e2e8f0; border-radius: 8px; padding: 4px; margin-bottom: 1rem; }
+    .tab-btn { flex: 1; padding: 0.6rem; border: none; background: none; font-weight: bold; font-size: 0.9rem; cursor: pointer; border-radius: 6px; transition: 0.2s; color: #555; }
+    .tab-btn.active { background: white; color: var(--dark); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Order Cards */
+    .order-card { background: white; border-radius: 10px; padding: 1rem; margin-bottom: 0.8rem; box-shadow: 0 2px 6px rgba(0,0,0,0.05); border-left: 4px solid var(--mc-yellow); }
+    .order-card.delivered { border-left-color: var(--success); opacity: 0.85; }
+    .order-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--dark); }
+    .order-details { font-size: 0.85rem; color: #555; line-height: 1.4; margin-bottom: 0.8rem; }
+    
+    .btn-action { width: 100%; padding: 0.7rem; background: var(--success); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
+    .badge-delivered { background: #e6f4ea; color: var(--success); padding: 0.3rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: bold; display: inline-block; }
+
+    /* Login Screen */
+    .login-container { max-width: 400px; margin: 4rem auto; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; }
+    .login-container h2 { color: var(--dark); margin-bottom: 1rem; }
+    .login-container input { width: 100%; padding: 0.8rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 1rem; text-align: center; }
+    .login-container button { width: 100%; padding: 0.8rem; background: var(--mc-red); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+    .error-msg { color: var(--mc-red); font-size: 0.85rem; margin-top: 0.5rem; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN VIEW (Shown if not logged in) -->
+  <div id="loginView" class="login-container" style="display: none;">
+    <h2>🛵 BodaSwift Rider Login</h2>
+    <p style="font-size: 0.85rem; color: #666; margin-bottom: 1rem;">Enter your registered phone number to access your shift dashboard.</p>
+    <form id="loginForm">
+      <input type="tel" id="loginPhone" placeholder="e.g. 2547XXXXXXXX" required>
+      <button type="submit">ACCESS DASHBOARD</button>
+      <div id="loginError" class="error-msg"></div>
+    </form>
+  </div>
+
+  <!-- DASHBOARD VIEW (Shown when logged in) -->
+  <div id="dashboardView" style="display: none;">
+    <header class="header">
+      <div class="logo">🛵 BodaSwift</div>
+      <button class="logout-btn" id="logoutBtn">Logout</button>
+    </header>
+
+    <div class="container">
+      <!-- Profile & Status Toggle -->
+      <div class="profile-card">
+        <div class="rider-info">
+          <h3 id="riderNameDisplay">Rider Name</h3>
+          <p id="riderPhoneDisplay">2547...</p>
+        </div>
+        <div>
+          <label class="switch">
+            <input type="checkbox" id="statusToggle">
+            <span class="slider"></span>
+          </label>
+          <span id="statusText" class="status-label">OFFLINE</span>
+        </div>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('pending')">Pending Orders</button>
+        <button class="tab-btn" onclick="switchTab('completed')">Completed History</button>
+      </div>
+
+      <!-- Pending Tab -->
+      <div id="pendingTab" class="tab-content active">
+        <div id="pendingOrdersList">
+          <p style="text-align: center; color: #888; margin-top: 2rem;">No active assigned orders. Check WhatsApp for dispatch alerts!</p>
+        </div>
+      </div>
+
+      <!-- Completed Tab -->
+      <div id="completedTab" class="tab-content">
+        <div id="completedOrdersList">
+          <p style="text-align: center; color: #888; margin-top: 2rem;">No completed deliveries yet today.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'https://fries-order.onrender.com'; // Update to your backend render URL
+
+    const loginView = document.getElementById('loginView');
+    const dashboardView = document.getElementById('dashboardView');
+    const loginForm = document.getElementById('loginForm');
+    const loginPhone = document.getElementById('loginPhone');
+    const loginError = document.getElementById('loginError');
+    const logoutBtn = document.getElementById('logoutBtn');
+    
+    const riderNameDisplay = document.getElementById('riderNameDisplay');
+    const riderPhoneDisplay = document.getElementById('riderPhoneDisplay');
+    const statusToggle = document.getElementById('statusToggle');
+    const statusText = document.getElementById('statusText');
+
+    // Check active session on load
+    const savedPhone = localStorage.getItem('bodaswift_rider_phone');
+    if (savedPhone) {
+      loadDashboard(savedPhone);
+    } else {
+      loginView.style.display = 'block';
+    }
+
+    // Login Form Handler
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const phone = loginPhone.value.trim();
+      if (!phone) return;
+
+      loginError.textContent = 'Verifying phone number...';
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/riders/status?phone=${phone}`);
+        const data = await res.json();
+
+        if (res.ok) {
+          localStorage.setItem('bodaswift_rider_phone', phone);
+          loadDashboard(phone);
+        } else {
+          loginError.textContent = data.message || 'Phone not registered on BodaSwift.';
+        }
+      } catch (err) {
+        loginError.textContent = 'Connection error. Try again.';
+      }
+    });
+
+    // Logout Handler
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('bodaswift_rider_phone');
+      dashboardView.style.display = 'none';
+      loginView.style.display = 'block';
+      loginPhone.value = '';
+    });
+
+    // Load Dashboard Data
+    async function loadDashboard(phone) {
+      loginView.style.display = 'none';
+      dashboardView.style.display = 'block';
+      riderPhoneDisplay.textContent = phone;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/riders/status?phone=${phone}`);
+        const data = await res.json();
+
+        if (res.ok) {
+          riderNameDisplay.textContent = data.name;
+          statusToggle.checked = data.isAvailable;
+          statusText.textContent = data.isAvailable ? 'ONLINE' : 'OFFLINE';
+          statusText.style.color = data.isAvailable ? 'var(--success)' : '#888';
+        }
+      } catch (err) {
+        console.error('Failed to load profile status');
+      }
+
+      // Fetch rider orders (Pending / Completed)
+      // Note: You can wire this to a dedicated GET /api/orders/rider?phone=\${phone} endpoint on your backend
+    }
+
+    // Status Toggle Handler
+    statusToggle.addEventListener('change', async () => {
+      const phone = localStorage.getItem('bodaswift_rider_phone');
+      const isAvailable = statusToggle.checked ? 1 : 0;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/riders/toggle-status`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, isAvailable })
+        });
+        const data = await res.json();
+
+        if (res.ok) {
+          statusText.textContent = isAvailable ? 'ONLINE' : 'OFFLINE';
+          statusText.style.color = isAvailable ? 'var(--success)' : '#888';
+        } else {
+          statusToggle.checked = !isAvailable; // revert
+        }
+      } catch (err) {
+        statusToggle.checked = !isAvailable; // revert
+      }
+    });
+
+    // Tab Switcher
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      if (tab === 'pending') {
+        document.querySelector('.tabs button:nth-child(1)').classList.add('active');
+        document.getElementById('pendingTab').classList.add('active');
+      } else {
+        document.querySelector('.tabs button:nth-child(2)').classList.add('active');
+        document.getElementById('completedTab').classList.add('active');
+      }
+    }
+  </script>
+</body>
+</html>
