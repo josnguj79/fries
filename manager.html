@@ -166,45 +166,44 @@
     }
 
     async function reassignOrder(orderId) {
-      if (availableRidersList.length === 0) {
-        alert('No riders registered on the system.');
-        return;
-      }
+  if (availableRidersList.length === 0) {
+    alert('No riders registered on the system.');
+    return;
+  }
 
-      const riderOptions = availableRidersList
-        .map((r, i) => `${i + 1}. ${r.name} (${r.phone}) - ${r.isAvailable ? 'ONLINE' : 'OFFLINE'}`)
-        .join('\n');
+  const riderOptions = availableRidersList
+    .map((r, i) => `${i + 1}. ${r.name} (${r.phone}) - ${r.isAvailable ? 'ONLINE' : 'OFFLINE'}`)
+    .join('\n');
 
-      const choice = prompt(`Select rider number to assign order ${orderId}:\n\n${riderOptions}`);
-      if (!choice) return;
+  const choice = prompt(`Select rider number to assign order ${orderId}:\n\n${riderOptions}`);
+  if (!choice) return;
 
-      const selectedIndex = parseInt(choice) - 1;
-      if (isNaN(selectedIndex) || !availableRidersList[selectedIndex]) {
-        alert('Invalid selection.');
-        return;
-      }
+  const selectedIndex = parseInt(choice) - 1;
+  if (isNaN(selectedIndex) || !availableRidersList[selectedIndex]) {
+    alert('Invalid selection.');
+    return;
+  }
 
-      const selectedRider = availableRidersList[selectedIndex];
+  const selectedRider = availableRidersList[selectedIndex];
 
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/admin/reassign`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId, targetRiderPhone: selectedRider.phone })
-        });
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/admin/reassign`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, targetRiderPhone: selectedRider.phone })
+    });
 
-        const data = await res.json();
-        if (res.ok) {
-          alert(`✅ Order ${orderId} assigned to ${selectedRider.name}!`);
-          fetchAdminData();
-        } else {
-          alert(data.message || 'Failed to reassign order.');
-        }
-      } catch (err) {
-        alert('Network error.');
-      }
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ Order ${orderId} assigned to ${selectedRider.name}!`);
+      fetchAdminData(); // Refresh table immediately
+    } else {
+      alert(data.message || 'Failed to reassign order.');
     }
-
+  } catch (err) {
+    alert('Network error while assigning order.');
+  }
+}
     // Auto refresh every 15 seconds
     fetchAdminData();
     setInterval(fetchAdminData, 15000);
