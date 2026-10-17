@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Kimana Fries - Customer Orders</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>">
+  <style>
+    :root {
+      --mc-red: #da291c;
+      --mc-yellow: #ffc72c;
+      --dark: #1d3557;
+      --light: #f8f9fa;
+      --success: #28a745;
+      --warning: #ff9f1c;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: var(--light); color: #333; padding-bottom: 2rem; }
+
+    /* Header */
+    .header { background: var(--mc-red); color: white; padding: 1rem; display: flex; justify-content: space-between; align-items: center; position: sticky; top: 0; z-index: 10; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    .logo { font-size: 1.2rem; font-weight: bold; color: var(--mc-yellow); display: flex; align-items: center; gap: 6px; }
+    .logout-btn { background: rgba(255,255,255,0.2); border: 1px solid white; color: white; padding: 0.3rem 0.8rem; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+
+    .container { max-width: 600px; margin: 1rem auto; padding: 0 1rem; }
+
+    /* Login Screen */
+    .login-container { max-width: 400px; margin: 4rem auto; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; }
+    .login-container h2 { color: var(--mc-red); margin-bottom: 0.5rem; }
+    .login-container p { font-size: 0.85rem; color: #666; margin-bottom: 1.2rem; }
+    .login-container input { width: 100%; padding: 0.8rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 1rem; text-align: center; }
+    .login-container button { width: 100%; padding: 0.8rem; background: var(--mc-red); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; }
+    .error-msg { color: var(--mc-red); font-size: 0.85rem; margin-top: 0.5rem; }
+
+    /* Customer Profile Card */
+    .profile-card { background: white; border-radius: 12px; padding: 1rem 1.2rem; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 1rem; display: flex; justify-content: space-between; align-items: center; }
+    .profile-info h3 { color: var(--dark); font-size: 1rem; }
+    .profile-info p { color: #666; font-size: 0.85rem; }
+
+    /* Tabs */
+    .tabs { display: flex; background: #e2e8f0; border-radius: 8px; padding: 4px; margin-bottom: 1rem; }
+    .tab-btn { flex: 1; padding: 0.6rem; border: none; background: none; font-weight: bold; font-size: 0.9rem; cursor: pointer; border-radius: 6px; transition: 0.2s; color: #555; }
+    .tab-btn.active { background: white; color: var(--mc-red); box-shadow: 0 2px 5px rgba(0,0,0,0.05); }
+
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* Order Cards */
+    .order-card { background: white; border-radius: 10px; padding: 1.2rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 5px solid var(--warning); position: relative; }
+    .order-card.dispatched { border-left-color: var(--dark); }
+    .order-card.delivered { border-left-color: var(--success); opacity: 0.9; }
+
+    .order-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--dark); }
+    .order-details { font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 0.8rem; }
+    
+    /* Status Badges */
+    .badge { padding: 0.3rem 0.7rem; border-radius: 20px; font-size: 0.75rem; font-weight: bold; display: inline-block; text-transform: uppercase; }
+    .badge-pending { background: #fff3cd; color: #856404; }
+    .badge-dispatched { background: #cce5ff; color: #004085; }
+    .badge-delivered { background: #d4edda; color: #155724; }
+
+    /* Rider Contact Box */
+    .rider-box { background: #f1f5f9; padding: 0.8rem; border-radius: 8px; font-size: 0.85rem; margin-top: 0.8rem; display: flex; justify-content: space-between; align-items: center; }
+    .rider-btn { background: #25D366; color: white; text-decoration: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-weight: bold; font-size: 0.8rem; }
+  </style>
+</head>
+<body>
+
+  <!-- LOGIN VIEW -->
+  <div id="loginView" class="login-container">
+    <h2>🍟 Track Your Orders</h2>
+    <p>Enter your phone number to check your active orders and delivery history.</p>
+    <form id="loginForm">
+      <input type="tel" id="customerPhoneInput" placeholder="e.g. 2547XXXXXXXX" required>
+      <button type="submit">VIEW MY ORDERS</button>
+      <div id="loginError" class="error-msg"></div>
+    </form>
+  </div>
+
+  <!-- DASHBOARD VIEW -->
+  <div id="dashboardView" style="display: none;">
+    <header class="header">
+      <div class="logo">🍟 Kimana Fries</div>
+      <button class="logout-btn" id="logoutBtn">Change Number</button>
+    </header>
+
+    <div class="container">
+      <div class="profile-card">
+        <div class="profile-info">
+          <h3>Customer Orders</h3>
+          <p id="phoneDisplay">2547...</p>
+        </div>
+        <button onclick="refreshOrders()" style="background: none; border: none; cursor: pointer; font-size: 1.2rem;">🔄</button>
+      </div>
+
+      <!-- Navigation Tabs -->
+      <div class="tabs">
+        <button class="tab-btn active" onclick="switchTab('active')">Active Deliveries</button>
+        <button class="tab-btn" onclick="switchTab('history')">Order History</button>
+      </div>
+
+      <!-- Active Orders Tab -->
+      <div id="activeTab" class="tab-content active">
+        <div id="activeOrdersList">
+          <p style="text-align: center; color: #888; margin-top: 2rem;">Loading active orders...</p>
+        </div>
+      </div>
+
+      <!-- History Tab -->
+      <div id="historyTab" class="tab-content">
+        <div id="historyOrdersList">
+          <p style="text-align: center; color: #888; margin-top: 2rem;">Loading order history...</p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API_BASE_URL = 'https://fries-v0l8.onrender.com';
+
+    const loginView = document.getElementById('loginView');
+    const dashboardView = document.getElementById('dashboardView');
+    const loginForm = document.getElementById('loginForm');
+    const customerPhoneInput = document.getElementById('customerPhoneInput');
+    const loginError = document.getElementById('loginError');
+    const logoutBtn = document.getElementById('logoutBtn');
+    const phoneDisplay = document.getElementById('phoneDisplay');
+
+    // Auto load session
+    const savedPhone = localStorage.getItem('kimana_customer_phone');
+    if (savedPhone) {
+      loadDashboard(savedPhone);
+    }
+
+    loginForm.addEventListener('submit', (e) => {
+      e.preventDefault();
+      const phone = customerPhoneInput.value.trim();
+      if (!phone) return;
+
+      localStorage.setItem('kimana_customer_phone', phone);
+      loadDashboard(phone);
+    });
+
+    logoutBtn.addEventListener('click', () => {
+      localStorage.removeItem('kimana_customer_phone');
+      dashboardView.style.display = 'none';
+      loginView.style.display = 'block';
+    });
+
+    function refreshOrders() {
+      const phone = localStorage.getItem('kimana_customer_phone');
+      if (phone) loadDashboard(phone);
+    }
+
+    async function loadDashboard(phone) {
+      loginView.style.display = 'none';
+      dashboardView.style.display = 'block';
+      phoneDisplay.textContent = phone;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders/customer?phone=${phone}`);
+        const data = await res.json();
+
+        if (res.ok) {
+          renderOrders(data.active, 'activeOrdersList', true);
+          renderOrders(data.history, 'historyOrdersList', false);
+        } else {
+          loginError.textContent = data.message || 'Error fetching orders.';
+        }
+      } catch (err) {
+        console.error('Failed to fetch customer orders:', err);
+      }
+    }
+
+    function renderOrders(orders, containerId, isActiveTab) {
+      const container = document.getElementById(containerId);
+      if (!orders || orders.length === 0) {
+        container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isActiveTab ? 'active' : 'past'} orders found.</p>`;
+        return;
+      }
+
+      container.innerHTML = orders.map(order => {
+        const itemsSummary = Array.isArray(order.items)
+          ? order.items.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ')
+          : 'Order details';
+
+        let statusBadge = '<span class="badge badge-pending">⏳ Cooking / Pending Dispatch</span>';
+        let cardClass = '';
+
+        if (order.status === 'DISPATCHED') {
+          statusBadge = '<span class="badge badge-dispatched">🛵 Rider En Route</span>';
+          cardClass = 'dispatched';
+        } else if (order.status === 'DELIVERED') {
+          statusBadge = '<span class="badge badge-delivered">✅ Delivered</span>';
+          cardClass = 'delivered';
+        }
+
+        const riderPhoneClean = order.riderPhone ? String(order.riderPhone).replace(/\D/g, '') : '';
+        const riderWaLink = `https://wa.me/${riderPhoneClean}?text=Hello%20${encodeURIComponent(order.riderName || 'Rider')},%20regarding%20my%20order%20${order.id}`;
+
+        return `
+          <div class="order-card ${cardClass}">
+            <div class="order-header">
+              <span>🆔 #${order.id}</span>
+              <span>KES ${order.totalAmount}</span>
+            </div>
+            <div class="order-details">
+              <p><strong>📍 Delivery To:</strong> ${order.deliveryLocation}</p>
+              <p><strong>🍟 Items:</strong> ${itemsSummary}</p>
+              <p style="margin-top: 6px;">${statusBadge}</p>
+            </div>
+            ${order.riderName ? `
+              <div class="rider-box">
+                <div>
+                  <strong>🛵 Assigned Rider:</strong> \${order.riderName}
+                </div>
+                <a href="\${riderWaLink}" target="_blank" class="rider-btn">WhatsApp Rider 💬</a>
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }).join('');
+    }
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      if (tab === 'active') {
+        document.querySelector('.tabs button:nth-child(1)').classList.add('active');
+        document.getElementById('activeTab').classList.add('active');
+      } else {
+        document.querySelector('.tabs button:nth-child(2)').classList.add('active');
+        document.getElementById('historyTab').classList.add('active');
+      }
+    }
+  </script>
+</body>
+</html>
