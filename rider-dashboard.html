@@ -248,30 +248,46 @@ function renderOrders(orders, containerId, isPending) {
     `;
   }).join('');
 }
-    // Quick Deliver Action from Dashboard
-    async function markDelivered(orderId) {
-      const phone = localStorage.getItem('bodaswift_rider_phone');
-      if (!phone || !orderId) return;
+    // Quick Deliver Action with Visual Click Indication
+async function markDelivered(orderId) {
+  const phone = localStorage.getItem('bodaswift_rider_phone');
+  if (!phone || !orderId) return;
 
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/orders/deliver`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ orderId, riderPhone: phone })
-        });
+  const btn = document.getElementById(`btn-${orderId}`);
+  if (btn) {
+    btn.disabled = true;
+    btn.textContent = 'Updating status... ⏳';
+    btn.style.opacity = '0.7';
+  }
 
-        const data = await res.json();
-        if (res.ok) {
-          alert(`Order ${orderId} marked as DELIVERED!`);
-          loadDashboard(phone); // Refresh lists
-        } else {
-          alert(data.message || 'Failed to update delivery status.');
-        }
-      } catch (err) {
-        alert('Network error. Please try again.');
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/orders/deliver`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ orderId, riderPhone: phone })
+    });
+
+    const data = await res.json();
+    if (res.ok) {
+      alert(`✅ Order ${orderId} marked as DELIVERED!`);
+      loadDashboard(phone); // Refresh list
+    } else {
+      alert(data.message || 'Failed to update delivery status.');
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = 'MARK AS DELIVERED ✅';
+        btn.style.opacity = '1';
       }
     }
-
+  } catch (err) {
+    alert('Network error. Please try again.');
+    if (btn) {
+      btn.disabled = false;
+      btn.textContent = 'MARK AS DELIVERED ✅';
+      btn.style.opacity = '1';
+    }
+  }
+}
     // Status Toggle Handler
     statusToggle.addEventListener('change', async () => {
       const phone = localStorage.getItem('bodaswift_rider_phone');
