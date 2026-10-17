@@ -7,19 +7,16 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const frontendUrl = process.env.FRONTEND_URL || 'https://josnguj79.github.io/fries';
+const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
 
-// 1. Manual CORS Headers Middleware applied FIRST to ALL requests
-app.use((req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+// Enable CORS for all origins & explicitly handle preflight OPTIONS
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
 
-  if (req.method === 'OPTIONS') {
-    return res.status(200).end();
-  }
-  next();
-});
+app.options('*', cors()); // Enable preflight across-the-board
 
 app.use(express.json());
 
@@ -37,8 +34,12 @@ app.get('/health', (req, res) => {
 // Helper: Send WhatsApp Message via Meta Cloud API
 async function sendWhatsAppMessage(payload) {
   const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
+  
   try {
-    const msgSummary = payload.type === 'text' ? payload.text?.body : 'Interactive/Media Message';
+    const msgSummary = payload.type === 'text' 
+      ? payload.text?.body 
+      : 'Interactive/Media Message';
+
     console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
 
     const response = await fetch(url, {
@@ -60,38 +61,57 @@ async function sendWhatsAppMessage(payload) {
   }
 }
 
-// Helper: Notify Manager
+// Helper: Notify Manager via WhatsApp
 async function notifyManager(messageText) {
   const managerPhone = process.env.MANAGER_PHONE;
-  if (!managerPhone) return;
-  await sendWhatsAppMessage({
+  if (!managerPhone) {
+    console.log('[Manager Alert Error] MANAGER_PHONE environment variable is not set.');
+    return;
+  }
+
+  const payload = {
     messaging_product: 'whatsapp',
     to: managerPhone,
     type: 'text',
     text: { body: messageText }
-  });
+  };
+
+  await sendWhatsAppMessage(payload);
 }
 
-// Helper: Broadcast Order
+// Helper: Broadcast Order with Claim Link to Active Boda Riders
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
   const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
   const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
+  // Fetch available riders from Turso
   const ridersResult = await turso.execute(`SELECT phone_number FROM riders WHERE is_available = 1`);
+  
   if (ridersResult.rows.length === 0) {
-    await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *${orderId}* was placed, but no riders are active.`);
+    console.log('[Dispatch] No active riders available.');
+    await notifyManager(`⚠️ *NO RIDERS AVAILABLE!*\nOrder *${orderId}* was placed, but no riders are active on the platform.`);
     return;
   }
 
+  // Send WhatsApp message with direct Web Claim link
   for (const rider of ridersResult.rows) {
-    await sendWhatsAppMessage({
+    const riderPhone = rider.phone_number;
+
+    const payload = {
       messaging_product: 'whatsapp',
-      to: rider.phone_number,
+      to: riderPhone,
       type: 'text',
       text: { 
-        body: `🍔 *NEW KIMANA FRIES ORDER!*\n\n*Order ID:* ${orderId}\n*Location:* ${deliveryLocation}\n*Items:* ${itemsSummary}\n*Total:* KES ${totalAmount}\n\n👉 *Tap link to claim order:* ${claimLink}`
+        body: `🍔 *NEW KIMANA FRIES ORDER!*\n\n` +
+              `*Order ID:* ${orderId}\n` +
+              `*Location:* ${deliveryLocation}\n` +
+              `*Items:* ${itemsSummary}\n` +
+              `*Total:* KES ${totalAmount}\n\n` +
+              `👉 *Tap link to claim order:* ${claimLink}`
       }
-    });
+    };
+
+    await sendWhatsAppMessage(payload);
   }
 }
 
@@ -102,7 +122,9 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
 app.post('/api/riders/register', async (req, res) => {
   try {
     const { name, phone } = req.body;
-    if (!name || !phone) return res.status(400).json({ success: false, message: 'Name and phone required.' });
+    if (!name || !phone) {
+      return res.status(400).json({ success: false, message: 'Rider name and phone number required.' });
+    }
 
     const cleanPhone = String(phone).trim();
     const cleanName = String(name).trim();
@@ -117,20 +139,24 @@ app.post('/api/riders/register', async (req, res) => {
       messaging_product: 'whatsapp',
       to: cleanPhone,
       type: 'text',
-      text: { body: `👋 *Welcome to BodaSwift, ${cleanName}!*\n\n👉 *Your Shift Portal:* ${portalLink}` }
+      text: {
+        body: `👋 *Welcome to BodaSwift, ${cleanName}!*\n\n👉 *Your Personal Shift Portal:* ${portalLink}`
+      }
     });
 
     return res.status(201).json({ success: true, message: 'Rider registered successfully!', portalLink });
   } catch (error) {
-    console.error('[Register Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error('[Register Rider Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
 app.post('/api/riders/toggle-status', async (req, res) => {
   try {
     const { phone, isAvailable } = req.body;
-    if (!phone || isAvailable === undefined) return res.status(400).json({ success: false, message: 'Missing parameters.' });
+    if (!phone || isAvailable === undefined) {
+      return res.status(400).json({ success: false, message: 'Missing phone or isAvailable status.' });
+    }
 
     const cleanPhone = String(phone).trim();
     const newStatus = isAvailable ? 1 : 0;
@@ -140,7 +166,9 @@ app.post('/api/riders/toggle-status', async (req, res) => {
       args: [cleanPhone]
     });
 
-    if (riderCheck.rows.length === 0) return res.status(404).json({ success: false, message: 'Rider phone number not registered.' });
+    if (riderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Rider phone number not registered.' });
+    }
 
     const riderName = riderCheck.rows[0].name || 'Rider';
 
@@ -156,15 +184,17 @@ app.post('/api/riders/toggle-status', async (req, res) => {
       riderName: riderName
     });
   } catch (error) {
-    console.error('[Toggle Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error('[Toggle Status Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
 app.get('/api/riders/status', async (req, res) => {
   try {
     const phone = req.query.phone;
-    if (!phone) return res.status(400).json({ success: false, message: 'Phone parameter required.' });
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone parameter required.' });
+    }
 
     const cleanPhone = String(phone).trim();
     const riderCheck = await turso.execute({
@@ -172,7 +202,9 @@ app.get('/api/riders/status', async (req, res) => {
       args: [cleanPhone]
     });
 
-    if (riderCheck.rows.length === 0) return res.status(404).json({ success: false, message: 'Rider not registered on BodaSwift.' });
+    if (riderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: 'Rider not found.' });
+    }
 
     const rider = riderCheck.rows[0];
     return res.status(200).json({
@@ -181,8 +213,8 @@ app.get('/api/riders/status', async (req, res) => {
       isAvailable: rider.is_available === 1
     });
   } catch (error) {
-    console.error('[Status Fetch Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    console.error('[Rider Status Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
@@ -193,10 +225,13 @@ app.get('/api/riders/status', async (req, res) => {
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
-    if (!customerPhone || !deliveryLocation || !items || !totalAmount) return res.status(400).json({ success: false, message: 'Missing order fields.' });
+    if (!customerPhone || !deliveryLocation || !items || !totalAmount) {
+      return res.status(400).json({ success: false, message: 'Missing required order fields.' });
+    }
 
     const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const itemsJson = JSON.stringify(items);
+    const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
 
     await turso.execute({
       sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status) VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
@@ -206,10 +241,20 @@ app.post('/api/orders/create', async (req, res) => {
     await notifyManager(`🔔 *NEW KITCHEN ORDER RECEIVED!*\n*Order ID:* ${orderId}\n*Total:* KES ${totalAmount}`);
     await broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items);
 
+    // 3-Minute Timeout Check
+    setTimeout(async () => {
+      try {
+        const orderCheck = await turso.execute({ sql: `SELECT status FROM orders WHERE id = ?`, args: [orderId] });
+        if (orderCheck.rows.length > 0 && String(orderCheck.rows[0].status).toUpperCase() === 'PENDING_DISPATCH') {
+          await notifyManager(`⚠️ *ORDER TIMEOUT! (#${orderId})* - No rider has claimed it after 3 minutes!`);
+        }
+      } catch (err) { console.error('[Timeout Error]:', err); }
+    }, 3 * 60 * 1000);
+
     return res.status(201).json({ success: true, message: 'Order created successfully.', orderId });
   } catch (error) {
     console.error('[Create Order Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
 
@@ -296,14 +341,6 @@ app.get('/api/orders/rider', async (req, res) => {
   } catch (error) {
     return res.status(500).json({ success: false, message: error.message });
   }
-});
-
-// Fallback Global Error Handler with Explicit CORS headers
-app.use((err, req, res, next) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
-  console.error('[Unhandled Express Error]:', err);
-  res.status(500).json({ success: false, message: err.message || 'Internal server error.' });
 });
 
 app.listen(PORT, () => {
