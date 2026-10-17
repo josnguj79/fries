@@ -122,7 +122,7 @@
   </div>
 
   <script>
-    const API_BASE_URL = 'https://fries-v018.onrender.com'; // Update to your backend render URL
+    const API_BASE_URL = 'https://fries-v018.onrender.com';
 
     const loginView = document.getElementById('loginView');
     const dashboardView = document.getElementById('dashboardView');
@@ -175,12 +175,13 @@
       loginPhone.value = '';
     });
 
-    // Load Dashboard Data
+    // Load Dashboard Data & Orders
     async function loadDashboard(phone) {
       loginView.style.display = 'none';
       dashboardView.style.display = 'block';
       riderPhoneDisplay.textContent = phone;
 
+      // 1. Fetch Rider Status & Profile
       try {
         const res = await fetch(`${API_BASE_URL}/api/riders/status?phone=${phone}`);
         const data = await res.json();
@@ -195,8 +196,76 @@
         console.error('Failed to load profile status');
       }
 
-      // Fetch rider orders (Pending / Completed)
-      // Note: You can wire this to a dedicated GET /api/orders/rider?phone=\${phone} endpoint on your backend
+      // 2. Fetch Rider's Pending & Completed Orders
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders/rider?phone=${phone}`);
+        const data = await res.json();
+
+        if (res.ok) {
+          renderOrders(data.pending, 'pendingOrdersList', true);
+          renderOrders(data.completed, 'completedOrdersList', false);
+        }
+      } catch (err) {
+        console.error('Failed to load rider orders');
+      }
+    }
+
+    // Render Helper
+    function renderOrders(orders, containerId, isPending) {
+      const container = document.getElementById(containerId);
+      if (!orders || orders.length === 0) {
+        container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isPending ? 'active assigned' : 'completed'} orders found.</p>`;
+        return;
+      }
+
+      container.innerHTML = orders.map(order => {
+        const itemsSummary = Array.isArray(order.items) 
+          ? order.items.map(i => `${i.qty}x ${i.name}`).join(', ') 
+          : 'Order details';
+
+        return `
+          <div class="order-card ${!isPending ? 'delivered' : ''}">
+            <div class="order-header">
+              <span>#${order.id}</span>
+              <span>KES ${order.totalAmount}</span>
+            </div>
+            <div class="order-details">
+              <p><strong>Location:</strong> ${order.deliveryLocation}</p>
+              <p><strong>Customer:</strong> ${order.customerPhone}</p>
+              <p><strong>Items:</strong> ${itemsSummary}</p>
+            </div>
+            ${isPending ? `
+              <button class="btn-action" onclick="markDelivered('\${order.id}')">MARK AS DELIVERED ✅</button>
+            ` : `
+              <span class="badge-delivered">DELIVERED</span>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
+
+    // Quick Deliver Action from Dashboard
+    async function markDelivered(orderId) {
+      const phone = localStorage.getItem('bodaswift_rider_phone');
+      if (!phone || !orderId) return;
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders/deliver`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, riderPhone: phone })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`Order ${orderId} marked as DELIVERED!`);
+          loadDashboard(phone); // Refresh lists
+        } else {
+          alert(data.message || 'Failed to update delivery status.');
+        }
+      } catch (err) {
+        alert('Network error. Please try again.');
+      }
     }
 
     // Status Toggle Handler
