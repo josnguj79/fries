@@ -2,10 +2,8 @@
 // CONFIGURATION & GLOBAL STATE
 // ==========================================
 
-// Render Backend API Endpoint for Order Placement
 const BACKEND_URL = "https://fries-v0l8.onrender.com/api/orders/create";
 
-// Kimana Fries Catalog Items
 const menuItems = [
   { id: "kf1", name: "Regular Chips", price: 100 },
   { id: "kf2", name: "Large Chips", price: 150 },
@@ -13,7 +11,6 @@ const menuItems = [
   { id: "kf4", name: "Smokey Pasua", price: 60 }
 ];
 
-// Active Customer Shopping Cart Array
 let cart = [];
 
 
@@ -36,7 +33,7 @@ const checkoutForm = document.getElementById('checkoutForm');
 // ==========================================
 
 /**
- * Renders the food catalog items dynamically inside the #menuGrid container.
+ * Renders food items inside #menuGrid.
  */
 function renderMenu() {
   if (!menuGrid) return;
@@ -53,10 +50,7 @@ function renderMenu() {
 }
 
 /**
- * Adds an item to the shopping cart array by ID.
- * Increments quantity if the item already exists in the cart.
- * 
- * @param {string} itemId - The unique ID of the menu item (e.g. 'kf1')
+ * Adds an item to the cart or increments its quantity.
  */
 function addToCart(itemId) {
   const item = menuItems.find(i => i.id === itemId);
@@ -71,15 +65,11 @@ function addToCart(itemId) {
   }
 
   updateCartUI();
-  toggleCart(true); // Open cart drawer after adding item
+  toggleCart(true); // Open cart drawer on add
 }
 
 /**
- * Adjusts the quantity of a specific cart item (+1 or -1).
- * Removes the item if the quantity drops below 1.
- * 
- * @param {string} itemId - The ID of the item to update
- * @param {number} change - +1 to increment, -1 to decrement
+ * Adjusts cart item quantity (+1 / -1).
  */
 function updateItemQuantity(itemId, change) {
   const index = cart.findIndex(i => i.id === itemId);
@@ -88,31 +78,27 @@ function updateItemQuantity(itemId, change) {
   cart[index].qty += change;
 
   if (cart[index].qty <= 0) {
-    cart.splice(index, 1); // Remove item if quantity hits 0
+    cart.splice(index, 1);
   }
 
   updateCartUI();
 }
 
 /**
- * Recalculates total items, overall total price, and updates cart HTML elements.
+ * Updates cart HTML counters and item breakdown list.
  */
 function updateCartUI() {
-  // Calculate total item count and sum price
   const totalCount = cart.reduce((sum, item) => sum + item.qty, 0);
   const totalPrice = cart.reduce((sum, item) => sum + (item.price * item.qty), 0);
 
-  // Update header cart badge and footer total
   if (cartCount) cartCount.textContent = totalCount;
   if (cartTotal) cartTotal.textContent = totalPrice;
 
-  // Handle empty cart display state
   if (cart.length === 0) {
     cartItemsContainer.innerHTML = '<p class="empty-msg">Your cart is empty.</p>';
     return;
   }
 
-  // Render cart items list with item quantity controls (+ / -)
   cartItemsContainer.innerHTML = cart.map(item => `
     <div class="cart-item" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.8rem; padding-bottom: 0.5rem; border-bottom: 1px solid #edf2f7;">
       <div>
@@ -132,9 +118,7 @@ function updateCartUI() {
 }
 
 /**
- * Opens or closes the sliding side cart drawer and backdrop overlay.
- * 
- * @param {boolean} open - True to open the cart drawer, false to close
+ * Toggles cart open or closed state explicitly.
  */
 function toggleCart(open) {
   if (!cartDrawer || !cartOverlay) return;
@@ -150,23 +134,17 @@ function toggleCart(open) {
 
 
 // ==========================================
-// CART & ORDER SUBMISSION EVENT LISTENERS
+// EVENT LISTENERS & CHECKOUT
 // ==========================================
 
-// Cart Drawer Open / Close Triggers
 if (openCartBtn) openCartBtn.addEventListener('click', () => toggleCart(true));
 if (closeCartBtn) closeCartBtn.addEventListener('click', () => toggleCart(false));
 if (cartOverlay) cartOverlay.addEventListener('click', () => toggleCart(false));
 
-/**
- * Handles checkout form submission, sends JSON order payload to Express backend,
- * and handles response feedback.
- */
 if (checkoutForm) {
   checkoutForm.addEventListener('submit', async (e) => {
     e.preventDefault();
 
-    // Prevent checkout on empty cart
     if (cart.length === 0) {
       alert("Please add items to your cart first.");
       return;
@@ -175,12 +153,10 @@ if (checkoutForm) {
     const customerPhoneInput = document.getElementById('customerPhone');
     const deliveryLocationInput = document.getElementById('deliveryLocation');
 
-    // Save customer phone number to local storage for automatic tracking session
     if (customerPhoneInput) {
       localStorage.setItem('kimana_customer_phone', customerPhoneInput.value.trim());
     }
 
-    // Construct backend API order payload
     const payload = {
       customerPhone: customerPhoneInput.value.trim(),
       deliveryLocation: deliveryLocationInput.value.trim(),
@@ -195,8 +171,67 @@ if (checkoutForm) {
     }
 
     try {
-      // POST order payload to Render Express API
       const response = await fetch(BACKEND_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
+      });
+
+      const data = await response.json().catch(() => ({}));
+
+      if (response.ok) {
+        alert("🎉 Order placed successfully! Riders are being alerted on WhatsApp.");
+        cart = [];
+        updateCartUI();
+        checkoutForm.reset();
+        toggleCart(false);
+        window.location.href = './customer-dashboard.html';
+      } else {
+        alert(data.message || "Failed to place order. Please try again.");
+      }
+    } catch (err) {
+      console.error("API Error:", err);
+      alert("Server error connecting to BodaSwift backend.");
+    } finally {
+      if (submitBtn) {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "Confirm & Place Order";
+      }
+    }
+  });
+}
+
+
+// ==========================================
+// SIDE DRAWER NAVIGATION LOGIC
+// ==========================================
+document.addEventListener('DOMContentLoaded', () => {
+  const menuToggleBtn = document.getElementById('menuToggleBtn');
+  const closeDrawerBtn = document.getElementById('closeDrawerBtn');
+  const sideDrawer = document.getElementById('sideDrawer');
+  const menuOverlay = document.getElementById('menuOverlay');
+
+  function openMenu() {
+    if (sideDrawer && menuOverlay) {
+      sideDrawer.classList.add('open');
+      menuOverlay.classList.add('active');
+    }
+  }
+
+  function closeMenu() {
+    if (sideDrawer && menuOverlay) {
+      sideDrawer.classList.remove('open');
+      menuOverlay.classList.remove('active');
+    }
+  }
+
+  if (menuToggleBtn) menuToggleBtn.addEventListener('click', openMenu);
+  if (closeDrawerBtn) closeDrawerBtn.addEventListener('click', closeMenu);
+  if (menuOverlay) menuOverlay.addEventListener('click', closeMenu);
+});
+
+
+// ==========================================
+// INITIALIZATION
+// ==========================================
+renderMenu();
