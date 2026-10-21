@@ -132,6 +132,26 @@ checkoutForm.addEventListener('submit', async (e) => {
     submitBtn.textContent = "Confirm & Place Order";
   }
 });
+document.addEventListener('DOMContentLoaded', () => {
+  const menuToggleBtn = document.getElementById('menuToggleBtn');
+  const closeDrawerBtn = document.getElementById('closeDrawerBtn');
+  const sideDrawer = document.getElementById('sideDrawer');
+  const menuOverlay = document.getElementById('menuOverlay');
+
+  function openMenu() {
+    sideDrawer.classList.add('open');
+    menuOverlay.classList.add('active');
+  }
+
+  function closeMenu() {
+    sideDrawer.classList.remove('open');
+    menuOverlay.classList.remove('active');
+  }
+
+  if (menuToggleBtn) menuToggleBtn.addEventListener('click', openMenu);
+  if (closeDrawerBtn) closeDrawerBtn.addEventListener('click', closeMenu);
+  if (menuOverlay) menuOverlay.addEventListener('click', closeMenu);
+});
 
 // Initialize
 renderMenu();
