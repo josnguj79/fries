@@ -21,6 +21,82 @@
     </button>
     <button id="installBtn" class="install-btn" style="display: none;">📲 Install App</button>
   </header>
+<!-- Hamburger Header Button & Side Navigation Drawer -->
+<header class="app-top-bar">
+  <button class="menu-toggle-btn" id="menuToggleBtn" aria-label="Open Navigation Menu">
+    ☰
+  </button>
+  <div class="brand-title">🍟 Kimana Fries</div>
+</header>
+
+<!-- Backdrop Overlay -->
+<div class="menu-overlay" id="menuOverlay"></div>
+
+<!-- Slide-out Side Drawer -->
+<nav class="side-drawer" id="sideDrawer">
+  <div class="drawer-header">
+    <div class="drawer-brand">
+      <span class="brand-icon">⚡</span>
+      <div>
+        <h3>BodaSwift</h3>
+        <p>Kimana Fries Dispatch</p>
+      </div>
+    </div>
+    <button class="close-drawer-btn" id="closeDrawerBtn">&times;</button>
+  </div>
+
+  <div class="drawer-content">
+    <div class="drawer-section-title">Navigation Portals</div>
+
+    <a href="./index.html" class="drawer-link active">
+      <span class="link-icon">🍟</span>
+      <div class="link-text">
+        <strong>Order Counter</strong>
+        <small>Place new orders</small>
+      </div>
+    </a>
+
+    <a href="./customer-dashboard.html" class="drawer-link">
+      <span class="link-icon">📦</span>
+      <div class="link-text">
+        <strong>Customer Dashboard</strong>
+        <small>Track active & past orders</small>
+      </div>
+    </a>
+
+    <a href="./rider-dashboard.html" class="drawer-link">
+      <span class="link-icon">🛵</span>
+      <div class="link-text">
+        <strong>Rider Dashboard</strong>
+        <small>Claim shifts & view deliveries</small>
+      </div>
+    </a>
+
+    <a href="./rider.html" class="drawer-link">
+      <span class="link-icon">👤</span>
+      <div class="link-text">
+        <strong>Rider Shift Portal</strong>
+        <small>Toggle Online/Offline status</small>
+      </div>
+    </a>
+
+    <div class="drawer-divider"></div>
+
+    <div class="drawer-section-title">Management</div>
+
+    <a href="./manager.html" class="drawer-link">
+      <span class="link-icon">🍳</span>
+      <div class="link-text">
+        <strong>Kitchen Operations</strong>
+        <small>Manager live stream & dispatches</small>
+      </div>
+    </a>
+  </div>
+
+  <div class="drawer-footer">
+    <small>BodaSwift v1.0 • Powered by Kimana Fries</small>
+  </div>
+</nav>
 
   <!-- Hero Banner -->
   <section class="hero">
