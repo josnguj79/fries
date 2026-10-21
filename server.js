@@ -50,9 +50,6 @@ app.get('/health', (req, res) => {
 
 /**
  * Sends a WhatsApp message via the Meta Cloud API.
- * 
- * @param {Object} payload - The Meta WhatsApp message payload object
- * @returns {Promise<Object>} - The API response data
  */
 async function sendWhatsAppMessage(payload) {
   const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
@@ -62,7 +59,7 @@ async function sendWhatsAppMessage(payload) {
       ? payload.text?.body 
       : 'Interactive/Media Message';
 
-    console.log(`[WhatsApp Outbound] To: ${payload.to} | Message: "${msgSummary.replace(/\n/g, ' ')}"`);
+    console.log(`[WhatsApp Outbound] To: ${payload.to} \vert{} Message: "${msgSummary.replace(/\n/g, ' ')}"`);
 
     const response = await fetch(url, {
       method: 'POST',
@@ -85,8 +82,6 @@ async function sendWhatsAppMessage(payload) {
 
 /**
  * Sends a notification message to the restaurant manager's WhatsApp number.
- * 
- * @param {string} messageText - The message body to send
  */
 async function notifyManager(messageText) {
   const managerPhone = process.env.MANAGER_PHONE;
@@ -107,14 +102,9 @@ async function notifyManager(messageText) {
 
 /**
  * Broadcasts a new order alert containing a web claim link to all active (online) Boda riders.
- * 
- * @param {string} orderId - Unique Order ID
- * @param {string} deliveryLocation - Delivery destination
- * @param {number} totalAmount - Total cost in KES
- * @param {Array} items - Ordered items array
  */
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
-  const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
+  const itemsSummary = items.map(i => `${i.qty}x${i.name}`).join(', ');
   const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
   // Fetch available (online) riders from Turso
@@ -230,7 +220,7 @@ app.post('/api/riders/toggle-status', async (req, res) => {
       args: [newStatus, cleanPhone]
     });
 
-    console.log(`[Rider Web Status] ${riderName} (${cleanPhone}) set is_available to ${newStatus}`);
+    console.log(`[Rider Web Status] ${riderName} (${cleanPhone}) set is_available to${newStatus}`);
 
     return res.status(200).json({
       success: true,
@@ -301,7 +291,7 @@ app.post('/api/orders/create', async (req, res) => {
     const orderId = `KF-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
     const itemsJson = typeof items === 'string' ? items : JSON.stringify(items);
     const parsedItemsArr = Array.isArray(items) ? items : (typeof items === 'string' ? JSON.parse(items) : []);
-    const itemsSummary = parsedItemsArr.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ');
+    const itemsSummary = parsedItemsArr.map(i => `${i.qty \vert{}\vert{} 1}x${i.name || 'Item'}`).join(', ');
 
     await turso.execute({
       sql: `INSERT INTO orders (id, customer_phone, delivery_location, items, total_amount, status) VALUES (?, ?, ?, ?, ?, 'PENDING_DISPATCH')`,
@@ -401,7 +391,7 @@ app.post('/api/orders/deliver', async (req, res) => {
       args: [cleanPhone, cleanOrderId]
     });
 
-    console.log(`[Delivery Complete] Order ${cleanOrderId} marked DELIVERED by ${cleanPhone}`);
+    console.log(`[Delivery Complete] Order ${cleanOrderId} marked DELIVERED by${cleanPhone}`);
 
     await notifyManager(
       `🎉 *ORDER DELIVERED! (#${cleanOrderId})*\n\n` +
@@ -461,216 +451,4 @@ app.post('/api/orders/claim', async (req, res) => {
 
     if (currentStatus === 'PENDING_DISPATCH') {
       await turso.execute({
-        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
-        args: [cleanPhone, cleanOrderId]
-      });
-
-      console.log(`[Web Claim Success] Order ${cleanOrderId} claimed by rider ${cleanPhone}`);
-
-      let riderName = 'Active Rider';
-      try {
-        const riderQuery = await turso.execute({
-          sql: `SELECT name FROM riders WHERE phone_number = ?`,
-          args: [cleanPhone]
-        });
-        if (riderQuery.rows.length > 0 && riderQuery.rows[0].name) {
-          riderName = riderQuery.rows[0].name;
-        }
-      } catch (rErr) {
-        console.error('[Rider Query Error]:', rErr);
-      }
-
-      await notifyManager(
-        `🛵 *RIDER ASSIGNED! (#${cleanOrderId})*\n\n` +
-        `*Rider Name:* ${riderName}\n` +
-        `*Rider Phone:* ${cleanPhone}\n` +
-        `*Status:* En route to Kimana Fries counter for pick up.`
-      );
-
-      const trackLink = `${frontendUrl}/claim.html?orderId=${cleanOrderId}&phone=${cleanPhone}`;
-
-      await sendWhatsAppMessage({
-        messaging_product: 'whatsapp',
-        to: cleanPhone,
-        type: 'text',
-        text: { 
-          body: `✅ *Order ${cleanOrderId} Claimed!*\n\n` +
-                `Proceed to Kimana Fries counter for pick up.\n\n` +
-                `👉 *Tap to Manage Order / Mark Delivered:* ${trackLink}` 
-        }
-      });
-
-      return res.status(200).json({ 
-        success: true, 
-        message: 'Order claimed successfully!', 
-        orderId: cleanOrderId 
-      });
-
-    } else {
-      console.log(`[Web Claim Rejected] Order ${cleanOrderId} already claimed.`);
-      return res.status(409).json({ 
-        success: false, 
-        message: `Order ${cleanOrderId} has already been claimed by another rider.` 
-      });
-    }
-
-  } catch (error) {
-    console.error('[Web Claim Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-
-/**
- * 7. Fetch active and completed orders assigned to a specific rider phone number.
- */
-app.get('/api/orders/rider', async (req, res) => {
-  try {
-    const phone = req.query.phone;
-
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Phone parameter required.' });
-    }
-
-    const cleanPhone = String(phone).trim();
-
-    const ordersResult = await turso.execute({
-      sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, created_at FROM orders WHERE rider_id = ? ORDER BY created_at DESC`,
-      args: [cleanPhone]
-    });
-
-    const pending = [];
-    const completed = [];
-
-    for (const row of ordersResult.rows) {
-      let parsedItems = [];
-      try {
-        parsedItems = JSON.parse(row.items);
-      } catch (e) {
-        parsedItems = [];
-      }
-
-      const orderObj = {
-        id: row.id,
-        customerPhone: row.customer_phone,
-        deliveryLocation: row.delivery_location,
-        items: parsedItems,
-        totalAmount: row.total_amount,
-        status: row.status,
-        createdAt: row.created_at
-      };
-
-      if (row.status === 'DISPATCHED') {
-        pending.push(orderObj);
-      } else if (row.status === 'DELIVERED') {
-        completed.push(orderObj);
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      pending: pending,
-      completed: completed
-    });
-
-  } catch (error) {
-    console.error('[Rider Orders Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-
-
-// ==========================================
-// CUSTOMER DASHBOARD ENDPOINTS
-// ==========================================
-
-/**
- * 8. Fetch active and past order history for a customer phone number (supporting number format variants).
- */
-app.get('/api/orders/customer', async (req, res) => {
-  try {
-    const rawPhone = req.query.phone;
-
-    if (!rawPhone) {
-      return res.status(400).json({ success: false, message: 'Phone parameter required.' });
-    }
-
-    const cleanPhone = String(rawPhone).trim();
-    const phoneNoPlus = cleanPhone.replace(/^\+/, '');
-    const phoneLocal = cleanPhone.startsWith('254') ? '0' + cleanPhone.slice(3) : cleanPhone;
-
-    const ordersResult = await turso.execute({
-      sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
-            FROM orders 
-            WHERE customer_phone = ? OR customer_phone = ? OR customer_phone = ? OR customer_phone = ?
-            ORDER BY created_at DESC`,
-      args: [cleanPhone, `+${phoneNoPlus}`, phoneNoPlus, phoneLocal]
-    });
-
-    const ridersResult = await turso.execute(`SELECT phone_number, name FROM riders`);
-    const riderMap = {};
-    for (const r of ridersResult.rows) {
-      riderMap[r.phone_number] = r.name || 'BodaSwift Rider';
-    }
-
-    const active = [];
-    const history = [];
-
-    for (const row of ordersResult.rows) {
-      let parsedItems = [];
-      try {
-        parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
-      } catch (e) {
-        parsedItems = [];
-      }
-
-      const riderName = row.rider_id ? (riderMap[row.rider_id] || 'BodaSwift Rider') : null;
-
-      const orderObj = {
-        id: row.id,
-        customerPhone: row.customer_phone,
-        deliveryLocation: row.delivery_location,
-        items: parsedItems,
-        totalAmount: row.total_amount,
-        status: row.status,
-        riderName: riderName,
-        riderPhone: row.rider_id || null,
-        createdAt: row.created_at
-      };
-
-      if (row.status === 'DELIVERED') {
-        history.push(orderObj);
-      } else {
-        active.push(orderObj);
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      active: active,
-      history: history
-    });
-
-  } catch (error) {
-    console.error('[Customer Orders Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-
-/**
- * 9. Track a single order status by Order ID.
- */
-app.get('/api/orders/track/:orderId', async (req, res) => {
-  try {
-    const { orderId } = req.params;
-    if (!orderId) {
-      return res.status(400).json({ success: false, message: 'Order ID is required.' });
-    }
-
-    const orderResult = await turso.execute({
-      sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
-            FROM orders WHERE id = ?`,
-      args: [String(orderId).trim()]
-    });
-
-    if (orderResult.rows.length === 0) {
-      return res.status(404).json
+        sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id =
