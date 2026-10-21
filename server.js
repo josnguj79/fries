@@ -1,15 +1,19 @@
+// ==========================================
+// DEPENDENCIES & ENVIRONMENT SETUP
+// ==========================================
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { createClient } from '@libsql/client';
 
+// Load environment variables from .env file
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const frontendUrl = process.env.FRONTEND_URL || 'https://kimanafries.com';
 
-// Enable CORS for all origins & handle preflight OPTIONS
+// Enable CORS for all origins and handle preflight OPTIONS requests
 app.use(cors({
   origin: '*',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
@@ -18,18 +22,38 @@ app.use(cors({
 
 app.use(express.json());
 
-// Initialize Turso Client
+
+// ==========================================
+// TURSO DATABASE INITIALIZATION
+// ==========================================
 const turso = createClient({
   url: process.env.TURSO_DATABASE_URL,
   authToken: process.env.TURSO_AUTH_TOKEN,
 });
 
-// Health Check Endpoint
+
+// ==========================================
+// HEALTH CHECK ENDPOINT
+// ==========================================
+
+/**
+ * Basic health check route to verify server uptime.
+ */
 app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date() });
 });
 
-// Helper: Send WhatsApp Message via Meta Cloud API
+
+// ==========================================
+// WHATSAPP HELPER FUNCTIONS
+// ==========================================
+
+/**
+ * Sends a WhatsApp message via the Meta Cloud API.
+ * 
+ * @param {Object} payload - The Meta WhatsApp message payload object
+ * @returns {Promise<Object>} - The API response data
+ */
 async function sendWhatsAppMessage(payload) {
   const url = `https://graph.facebook.com/v20.0/${process.env.WA_PHONE_NUMBER_ID}/messages`;
   
@@ -59,7 +83,11 @@ async function sendWhatsAppMessage(payload) {
   }
 }
 
-// Helper: Notify Manager via WhatsApp
+/**
+ * Sends a notification message to the restaurant manager's WhatsApp number.
+ * 
+ * @param {string} messageText - The message body to send
+ */
 async function notifyManager(messageText) {
   const managerPhone = process.env.MANAGER_PHONE;
   if (!managerPhone) {
@@ -77,12 +105,19 @@ async function notifyManager(messageText) {
   await sendWhatsAppMessage(payload);
 }
 
-// Helper: Broadcast Order with Claim Link to Active Boda Riders
+/**
+ * Broadcasts a new order alert containing a web claim link to all active (online) Boda riders.
+ * 
+ * @param {string} orderId - Unique Order ID
+ * @param {string} deliveryLocation - Delivery destination
+ * @param {number} totalAmount - Total cost in KES
+ * @param {Array} items - Ordered items array
+ */
 async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, items) {
   const itemsSummary = items.map(i => `${i.qty}x ${i.name}`).join(', ');
   const claimLink = `${frontendUrl}/claim.html?orderId=${orderId}`;
 
-  // Fetch available riders from Turso
+  // Fetch available (online) riders from Turso
   const ridersResult = await turso.execute(`SELECT phone_number FROM riders WHERE is_available = 1`);
   
   if (ridersResult.rows.length === 0) {
@@ -91,7 +126,7 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
     return;
   }
 
-  // Send WhatsApp message with direct Web Claim link
+  // Send WhatsApp dispatch notification to each active rider
   for (const rider of ridersResult.rows) {
     const riderPhone = rider.phone_number;
 
@@ -113,11 +148,14 @@ async function broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, it
   }
 }
 
+
 // ==========================================
 // RIDER MANAGEMENT ENDPOINTS
 // ==========================================
 
-// 1. POST Endpoint: Register New Rider
+/**
+ * 1. Register a new BodaSwift rider as offline and send portal credentials via WhatsApp.
+ */
 app.post('/api/riders/register', async (req, res) => {
   try {
     const { name, phone } = req.body;
@@ -162,7 +200,9 @@ app.post('/api/riders/register', async (req, res) => {
   }
 });
 
-// 2. POST Endpoint: Web-Based Rider Status Toggle
+/**
+ * 2. Toggle rider online/offline status via the web portal.
+ */
 app.post('/api/riders/toggle-status', async (req, res) => {
   try {
     const { phone, isAvailable } = req.body;
@@ -205,7 +245,9 @@ app.post('/api/riders/toggle-status', async (req, res) => {
   }
 });
 
-// 3. GET Endpoint: Fetch Rider Status
+/**
+ * 3. Fetch rider name and availability status.
+ */
 app.get('/api/riders/status', async (req, res) => {
   try {
     const phone = req.query.phone;
@@ -239,11 +281,15 @@ app.get('/api/riders/status', async (req, res) => {
   }
 });
 
+
 // ==========================================
-// ORDER DISPATCH ENDPOINTS
+// ORDER DISPATCH & LIFECYCLE ENDPOINTS
 // ==========================================
 
-// 4. POST Endpoint: Create Order & Broadcast Claim Link
+/**
+ * 4. Create a new order, save it to Turso, notify manager, and broadcast claim links to riders.
+ * Includes a 3-minute unclaimed order safety timeout check.
+ */
 app.post('/api/orders/create', async (req, res) => {
   try {
     const { customerPhone, deliveryLocation, items, totalAmount } = req.body;
@@ -270,6 +316,7 @@ app.post('/api/orders/create', async (req, res) => {
 
     console.log(`[Turso DB] Saved Order: ${orderId}`);
 
+    // Notify manager and broadcast to riders in background
     Promise.allSettled([
       notifyManager(
         `🔔 *NEW KITCHEN ORDER RECEIVED!*\n\n` +
@@ -283,6 +330,7 @@ app.post('/api/orders/create', async (req, res) => {
       broadcastOrderToRiders(orderId, deliveryLocation, totalAmount, parsedItemsArr)
     ]).catch(err => console.error('[Background Dispatch Alert Error]:', err));
 
+    // 3-minute timeout safety check for unclaimed orders
     setTimeout(async () => {
       try {
         const orderCheck = await turso.execute({
@@ -318,7 +366,9 @@ app.post('/api/orders/create', async (req, res) => {
   }
 });
 
-// 5. POST Endpoint: Mark Order as DELIVERED (Rider completes dropoff)
+/**
+ * 5. Mark an order as DELIVERED when the assigned rider completes drop-off.
+ */
 app.post('/api/orders/deliver', async (req, res) => {
   try {
     const { orderId, riderPhone } = req.body;
@@ -330,7 +380,6 @@ app.post('/api/orders/deliver', async (req, res) => {
     const cleanOrderId = String(orderId).trim();
     const cleanPhone = String(riderPhone).trim();
 
-    // 1. Fetch current order status from Turso
     const checkOrder = await turso.execute({
       sql: `SELECT status, customer_phone, rider_id FROM orders WHERE id = ?`,
       args: [cleanOrderId]
@@ -347,7 +396,6 @@ app.post('/api/orders/deliver', async (req, res) => {
       return res.status(400).json({ success: false, message: 'Order is already marked as delivered.' });
     }
 
-    // 2. Update status to DELIVERED in Turso
     await turso.execute({
       sql: `UPDATE orders SET status = 'DELIVERED', rider_id = ? WHERE id = ?`,
       args: [cleanPhone, cleanOrderId]
@@ -355,14 +403,12 @@ app.post('/api/orders/deliver', async (req, res) => {
 
     console.log(`[Delivery Complete] Order ${cleanOrderId} marked DELIVERED by ${cleanPhone}`);
 
-    // 3. Notify Manager via WhatsApp
     await notifyManager(
       `🎉 *ORDER DELIVERED! (#${cleanOrderId})*\n\n` +
       `*Rider:* ${cleanPhone}\n` +
       `*Status:* Successfully delivered to customer!`
     );
 
-    // 4. Send Confirmation WhatsApp to Customer
     if (customerPhone) {
       await sendWhatsAppMessage({
         messaging_product: 'whatsapp',
@@ -387,7 +433,10 @@ app.post('/api/orders/deliver', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
-// 6. POST Endpoint: Web Claim Action
+
+/**
+ * 6. Process web-based order claim action by a rider via the broadcast link.
+ */
 app.post('/api/orders/claim', async (req, res) => {
   try {
     const { orderId, riderPhone } = req.body;
@@ -471,7 +520,9 @@ app.post('/api/orders/claim', async (req, res) => {
   }
 });
 
-// 7. GET Endpoint: Fetch Active & Completed Orders
+/**
+ * 7. Fetch active and completed orders assigned to a specific rider phone number.
+ */
 app.get('/api/orders/rider', async (req, res) => {
   try {
     const phone = req.query.phone;
@@ -526,11 +577,15 @@ app.get('/api/orders/rider', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+
+
 // ==========================================
 // CUSTOMER DASHBOARD ENDPOINTS
 // ==========================================
 
-// 1. GET Endpoint: Fetch Active and History Orders for a Customer
+/**
+ * 8. Fetch active and past order history for a customer phone number (supporting number format variants).
+ */
 app.get('/api/orders/customer', async (req, res) => {
   try {
     const rawPhone = req.query.phone;
@@ -543,7 +598,6 @@ app.get('/api/orders/customer', async (req, res) => {
     const phoneNoPlus = cleanPhone.replace(/^\+/, '');
     const phoneLocal = cleanPhone.startsWith('254') ? '0' + cleanPhone.slice(3) : cleanPhone;
 
-    // Fetch all orders matching customer phone variants
     const ordersResult = await turso.execute({
       sql: `SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
             FROM orders 
@@ -552,7 +606,6 @@ app.get('/api/orders/customer', async (req, res) => {
       args: [cleanPhone, `+${phoneNoPlus}`, phoneNoPlus, phoneLocal]
     });
 
-    // Fetch all riders to attach rider details (Name & Phone) to assigned orders
     const ridersResult = await turso.execute(`SELECT phone_number, name FROM riders`);
     const riderMap = {};
     for (const r of ridersResult.rows) {
@@ -587,7 +640,6 @@ app.get('/api/orders/customer', async (req, res) => {
       if (row.status === 'DELIVERED') {
         history.push(orderObj);
       } else {
-        // PENDING_DISPATCH or DISPATCHED
         active.push(orderObj);
       }
     }
@@ -603,7 +655,10 @@ app.get('/api/orders/customer', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
-// 2. GET Endpoint: Track Single Order Status
+
+/**
+ * 9. Track a single order status by Order ID.
+ */
 app.get('/api/orders/track/:orderId', async (req, res) => {
   try {
     const { orderId } = req.params;
@@ -618,325 +673,4 @@ app.get('/api/orders/track/:orderId', async (req, res) => {
     });
 
     if (orderResult.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Order not found.' });
-    }
-
-    const row = orderResult.rows[0];
-    let parsedItems = [];
-    try {
-      parsedItems = typeof row.items === 'string' ? JSON.parse(row.items) : row.items;
-    } catch (e) {
-      parsedItems = [];
-    }
-
-    let riderName = null;
-    if (row.rider_id) {
-      const riderRes = await turso.execute({
-        sql: `SELECT name FROM riders WHERE phone_number = ?`,
-        args: [row.rider_id]
-      });
-      if (riderRes.rows.length > 0) {
-        riderName = riderRes.rows[0].name;
-      }
-    }
-
-    return res.status(200).json({
-      success: true,
-      order: {
-        id: row.id,
-        customerPhone: row.customer_phone,
-        deliveryLocation: row.delivery_location,
-        items: parsedItems,
-        totalAmount: row.total_amount,
-        status: row.status,
-        riderName: riderName,
-        riderPhone: row.rider_id,
-        createdAt: row.created_at
-      }
-    });
-
-  } catch (error) {
-    console.error('[Track Order Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-
-// ==========================================
-// OPERATIONS & MANAGER ENDPOINTS
-// ==========================================
-
-// 1. GET Endpoint: Kitchen Admin Overview (Live Orders & Shift Stats)
-app.get('/api/admin/overview', async (req, res) => {
-  try {
-    // Fetch all active/pending orders
-    const liveOrdersResult = await turso.execute(`
-      SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
-      FROM orders 
-      ORDER BY created_at DESC 
-      LIMIT 50
-    `);
-
-    // Fetch active riders
-    const ridersResult = await turso.execute(`
-      SELECT phone_number, name, is_available 
-      FROM riders
-    `);
-
-    // Calculate daily earnings summary per rider (from DELIVERED orders)
-    const earningsResult = await turso.execute(`
-      SELECT rider_id, COUNT(*) as completed_trips, SUM(total_amount) as total_revenue 
-      FROM orders 
-      WHERE status = 'DELIVERED' 
-      GROUP BY rider_id
-    `);
-
-    const earningsMap = {};
-    for (const row of earningsResult.rows) {
-      if (row.rider_id) {
-        earningsMap[row.rider_id] = {
-          completedTrips: row.completed_trips,
-          totalRevenue: row.total_revenue
-        };
-      }
-    }
-
-    const ridersWithStats = ridersResult.rows.map(r => ({
-      phone: r.phone_number,
-      name: r.name || 'Rider',
-      isAvailable: r.is_available === 1,
-      completedTrips: earningsMap[r.phone_number]?.completedTrips || 0,
-      totalRevenue: earningsMap[r.phone_number]?.totalRevenue || 0
-    }));
-
-    return res.status(200).json({
-      success: true,
-      orders: liveOrdersResult.rows,
-      riders: ridersWithStats
-    });
-
-  } catch (error) {
-    console.error('[Admin Overview Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// 2. POST Endpoint: Manual Order Reassignment by Manager (Flexible ID Match)
-app.post('/api/admin/reassign', async (req, res) => {
-  try {
-    const { orderId, targetRiderPhone } = req.body;
-
-    if (!orderId || !targetRiderPhone) {
-      return res.status(400).json({ success: false, message: 'Missing orderId or targetRiderPhone.' });
-    }
-
-    const cleanOrderId = String(orderId).trim();
-    const cleanPhone = String(targetRiderPhone).trim();
-
-    // 1. Check if order exists (Case-insensitive check)
-    const orderCheck = await turso.execute({
-      sql: `SELECT id FROM orders WHERE LOWER(TRIM(id)) = LOWER(?)`,
-      args: [cleanOrderId]
-    });
-
-    if (orderCheck.rows.length === 0) {
-      console.log(`[Reassign 404] Order ID '${cleanOrderId}' not found in database.`);
-      return res.status(404).json({ success: false, message: `Order '${cleanOrderId}' not found in database.` });
-    }
-
-    const dbOrderId = orderCheck.rows[0].id; // Exact case ID from DB
-
-    // 2. Update order status to DISPATCHED and assign rider_id
-    await turso.execute({
-      sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
-      args: [cleanPhone, dbOrderId]
-    });
-
-    console.log(`[Admin Action Success] Order ${dbOrderId} assigned to rider ${cleanPhone}`);
-
-    // 3. Send WhatsApp Notification to Rider
-    sendWhatsAppMessage({
-      messaging_product: 'whatsapp',
-      to: cleanPhone,
-      type: 'text',
-      text: {
-        body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${dbOrderId})*\n\n` +
-              `Manager assigned order ${dbOrderId} directly to you.\n\n` +
-              `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
-      }
-    }).catch(err => console.error('[WhatsApp Reassign Alert Error]:', err));
-
-    return res.status(200).json({
-      success: true,
-      message: `Order ${dbOrderId} assigned successfully to ${cleanPhone}!`,
-      orderId: dbOrderId,
-      status: 'DISPATCHED'
-    });
-
-  } catch (error) {
-    console.error('[Reassign Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-    // 3. Dispatch WhatsApp Notification to assigned Rider in background
-    sendWhatsAppMessage({
-      messaging_product: 'whatsapp',
-      to: cleanPhone,
-      type: 'text',
-      text: {
-        body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${cleanOrderId})*\n\n` +
-              `Manager assigned order ${cleanOrderId} directly to you.\n\n` +
-              `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
-      }
-    }).catch(err => console.error('[WhatsApp Reassign Error]:', err));
-
-    return res.status(200).json({
-      success: true,
-      message: `Order ${cleanOrderId} reassigned successfully to ${cleanPhone}!`,
-      orderId: cleanOrderId,
-      status: 'DISPATCHED'
-    });
-
-  } catch (error) {
-    console.error('[Reassign Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-// ==========================================
-// MANAGER AUTHENTICATION & SECURITY
-// ==========================================
-
-// Define Manager Admin PIN (Change this to your preferred secret PIN)
-const MANAGER_PIN = process.env.MANAGER_PIN || "4321";
-const ADMIN_SECRET_TOKEN = "bodaswift_admin_secret_token_2026";
-
-// Login Endpoint: Verify Admin PIN
-app.post('/api/admin/login', (req, res) => {
-  const { pin } = req.body;
-
-  if (!pin || String(pin).trim() !== MANAGER_PIN) {
-    return res.status(401).json({ success: false, message: 'Invalid Admin PIN.' });
-  }
-
-  return res.status(200).json({
-    success: true,
-    token: ADMIN_SECRET_TOKEN,
-    message: 'Access granted.'
-  });
-});
-
-// Middleware Helper: Authenticate Admin Requests
-function authenticateAdmin(req, res, next) {
-  const authHeader = req.headers['authorization'];
-  if (!authHeader || authHeader !== `Bearer ${ADMIN_SECRET_TOKEN}`) {
-    return res.status(401).json({ success: false, message: 'Unauthorized. Admin login required.' });
-  }
-  next();
-}
-
-// Protected: GET Kitchen Admin Overview
-app.get('/api/admin/overview', authenticateAdmin, async (req, res) => {
-  try {
-    const liveOrdersResult = await turso.execute(`
-      SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
-      FROM orders 
-      ORDER BY created_at DESC 
-      LIMIT 50
-    `);
-
-    const ridersResult = await turso.execute(`
-      SELECT phone_number, name, is_available 
-      FROM riders
-    `);
-
-    const earningsResult = await turso.execute(`
-      SELECT rider_id, COUNT(*) as completed_trips, SUM(total_amount) as total_revenue 
-      FROM orders 
-      WHERE status = 'DELIVERED' 
-      GROUP BY rider_id
-    `);
-
-    const earningsMap = {};
-    for (const row of earningsResult.rows) {
-      if (row.rider_id) {
-        earningsMap[row.rider_id] = {
-          completedTrips: row.completed_trips,
-          totalRevenue: row.total_revenue
-        };
-      }
-    }
-
-    const ridersWithStats = ridersResult.rows.map(r => ({
-      phone: r.phone_number,
-      name: r.name || 'Rider',
-      isAvailable: r.is_available === 1,
-      completedTrips: earningsMap[r.phone_number]?.completedTrips || 0,
-      totalRevenue: earningsMap[r.phone_number]?.totalRevenue || 0
-    }));
-
-    return res.status(200).json({
-      success: true,
-      orders: liveOrdersResult.rows,
-      riders: ridersWithStats
-    });
-
-  } catch (error) {
-    console.error('[Admin Overview Error]:', error);
-    return res.status(500).json({ success: false, message: error.message });
-  }
-});
-
-// Protected: POST Manual Order Reassignment
-app.post('/api/admin/reassign', authenticateAdmin, async (req, res) => {
-  try {
-    const { orderId, targetRiderPhone } = req.body;
-
-    if (!orderId || !targetRiderPhone) {
-      return res.status(400).json({ success: false, message: 'Missing orderId or targetRiderPhone.' });
-    }
-
-    const cleanOrderId = String(orderId).trim();
-    const cleanPhone = String(targetRiderPhone).trim();
-
-    const orderCheck = await turso.execute({
-      sql: `SELECT id FROM orders WHERE LOWER(TRIM(id)) = LOWER(?)`,
-      args: [cleanOrderId]
-    });
-
-    if (orderCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, message: `Order '${cleanOrderId}' not found.` });
-    }
-
-    const dbOrderId = orderCheck.rows[0].id;
-
-    await turso.execute({
-      sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
-      args: [cleanPhone, dbOrderId]
-    });
-
-    sendWhatsAppMessage({
-      messaging_product: 'whatsapp',
-      to: cleanPhone,
-      type: 'text',
-      text: {
-        body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${dbOrderId})*\n\n` +
-              `Manager assigned order ${dbOrderId} directly to you.\n\n` +
-              `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
-      }
-    }).catch(err => console.error('[WhatsApp Reassign Alert Error]:', err));
-
-    return res.status(200).json({
-      success: true,
-      message: `Order ${dbOrderId} assigned successfully to ${cleanPhone}!`,
-      orderId: dbOrderId,
-      status: 'DISPATCHED'
-    });
-
-  } catch (error) {
-    console.error('[Reassign Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
-  }
-});
-
-app.listen(PORT, () => {
-  console.log(`Server listening on port ${PORT}`);
-});
+      return res.status(404).json
