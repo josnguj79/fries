@@ -801,6 +801,142 @@ app.post('/api/admin/reassign', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+// ==========================================
+// MANAGER AUTHENTICATION & SECURITY
+// ==========================================
+
+// Define Manager Admin PIN (Change this to your preferred secret PIN)
+const MANAGER_PIN = process.env.MANAGER_PIN || "4321";
+const ADMIN_SECRET_TOKEN = "bodaswift_admin_secret_token_2026";
+
+// Login Endpoint: Verify Admin PIN
+app.post('/api/admin/login', (req, res) => {
+  const { pin } = req.body;
+
+  if (!pin || String(pin).trim() !== MANAGER_PIN) {
+    return res.status(401).json({ success: false, message: 'Invalid Admin PIN.' });
+  }
+
+  return res.status(200).json({
+    success: true,
+    token: ADMIN_SECRET_TOKEN,
+    message: 'Access granted.'
+  });
+});
+
+// Middleware Helper: Authenticate Admin Requests
+function authenticateAdmin(req, res, next) {
+  const authHeader = req.headers['authorization'];
+  if (!authHeader || authHeader !== `Bearer ${ADMIN_SECRET_TOKEN}`) {
+    return res.status(401).json({ success: false, message: 'Unauthorized. Admin login required.' });
+  }
+  next();
+}
+
+// Protected: GET Kitchen Admin Overview
+app.get('/api/admin/overview', authenticateAdmin, async (req, res) => {
+  try {
+    const liveOrdersResult = await turso.execute(`
+      SELECT id, customer_phone, delivery_location, items, total_amount, status, rider_id, created_at 
+      FROM orders 
+      ORDER BY created_at DESC 
+      LIMIT 50
+    `);
+
+    const ridersResult = await turso.execute(`
+      SELECT phone_number, name, is_available 
+      FROM riders
+    `);
+
+    const earningsResult = await turso.execute(`
+      SELECT rider_id, COUNT(*) as completed_trips, SUM(total_amount) as total_revenue 
+      FROM orders 
+      WHERE status = 'DELIVERED' 
+      GROUP BY rider_id
+    `);
+
+    const earningsMap = {};
+    for (const row of earningsResult.rows) {
+      if (row.rider_id) {
+        earningsMap[row.rider_id] = {
+          completedTrips: row.completed_trips,
+          totalRevenue: row.total_revenue
+        };
+      }
+    }
+
+    const ridersWithStats = ridersResult.rows.map(r => ({
+      phone: r.phone_number,
+      name: r.name || 'Rider',
+      isAvailable: r.is_available === 1,
+      completedTrips: earningsMap[r.phone_number]?.completedTrips || 0,
+      totalRevenue: earningsMap[r.phone_number]?.totalRevenue || 0
+    }));
+
+    return res.status(200).json({
+      success: true,
+      orders: liveOrdersResult.rows,
+      riders: ridersWithStats
+    });
+
+  } catch (error) {
+    console.error('[Admin Overview Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// Protected: POST Manual Order Reassignment
+app.post('/api/admin/reassign', authenticateAdmin, async (req, res) => {
+  try {
+    const { orderId, targetRiderPhone } = req.body;
+
+    if (!orderId || !targetRiderPhone) {
+      return res.status(400).json({ success: false, message: 'Missing orderId or targetRiderPhone.' });
+    }
+
+    const cleanOrderId = String(orderId).trim();
+    const cleanPhone = String(targetRiderPhone).trim();
+
+    const orderCheck = await turso.execute({
+      sql: `SELECT id FROM orders WHERE LOWER(TRIM(id)) = LOWER(?)`,
+      args: [cleanOrderId]
+    });
+
+    if (orderCheck.rows.length === 0) {
+      return res.status(404).json({ success: false, message: `Order '${cleanOrderId}' not found.` });
+    }
+
+    const dbOrderId = orderCheck.rows[0].id;
+
+    await turso.execute({
+      sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
+      args: [cleanPhone, dbOrderId]
+    });
+
+    sendWhatsAppMessage({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: {
+        body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${dbOrderId})*\n\n` +
+              `Manager assigned order ${dbOrderId} directly to you.\n\n` +
+              `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
+      }
+    }).catch(err => console.error('[WhatsApp Reassign Alert Error]:', err));
+
+    return res.status(200).json({
+      success: true,
+      message: `Order ${dbOrderId} assigned successfully to ${cleanPhone}!`,
+      orderId: dbOrderId,
+      status: 'DISPATCHED'
+    });
+
+  } catch (error) {
+    console.error('[Reassign Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
+
 app.listen(PORT, () => {
   console.log(`Server listening on port ${PORT}`);
 });
