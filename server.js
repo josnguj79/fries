@@ -720,7 +720,7 @@ app.get('/api/admin/overview', async (req, res) => {
   }
 });
 
-// 2. POST Endpoint: Manual Order Reassignment by Manager
+// 2. POST Endpoint: Manual Order Reassignment by Manager (Flexible ID Match)
 app.post('/api/admin/reassign', async (req, res) => {
   try {
     const { orderId, targetRiderPhone } = req.body;
@@ -732,24 +732,51 @@ app.post('/api/admin/reassign', async (req, res) => {
     const cleanOrderId = String(orderId).trim();
     const cleanPhone = String(targetRiderPhone).trim();
 
-    // 1. Check if order exists
+    // 1. Check if order exists (Case-insensitive check)
     const orderCheck = await turso.execute({
-      sql: `SELECT id FROM orders WHERE id = ?`,
+      sql: `SELECT id FROM orders WHERE LOWER(TRIM(id)) = LOWER(?)`,
       args: [cleanOrderId]
     });
 
     if (orderCheck.rows.length === 0) {
-      return res.status(404).json({ success: false, message: 'Order not found.' });
+      console.log(`[Reassign 404] Order ID '${cleanOrderId}' not found in database.`);
+      return res.status(404).json({ success: false, message: `Order '${cleanOrderId}' not found in database.` });
     }
 
-    // 2. Explicitly update status to DISPATCHED and store target rider in rider_id
+    const dbOrderId = orderCheck.rows[0].id; // Exact case ID from DB
+
+    // 2. Update order status to DISPATCHED and assign rider_id
     await turso.execute({
       sql: `UPDATE orders SET status = 'DISPATCHED', rider_id = ? WHERE id = ?`,
-      args: [cleanPhone, cleanOrderId]
+      args: [cleanPhone, dbOrderId]
     });
 
-    console.log(`[Admin Action Success] Order ${cleanOrderId} status changed to DISPATCHED for rider ${cleanPhone}`);
+    console.log(`[Admin Action Success] Order ${dbOrderId} assigned to rider ${cleanPhone}`);
 
+    // 3. Send WhatsApp Notification to Rider
+    sendWhatsAppMessage({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: {
+        body: `⚡ *MANUAL DISPATCH ASSIGNMENT (#${dbOrderId})*\n\n` +
+              `Manager assigned order ${dbOrderId} directly to you.\n\n` +
+              `👉 *Open Shift Portal:* ${frontendUrl}/rider-dashboard.html`
+      }
+    }).catch(err => console.error('[WhatsApp Reassign Alert Error]:', err));
+
+    return res.status(200).json({
+      success: true,
+      message: `Order ${dbOrderId} assigned successfully to ${cleanPhone}!`,
+      orderId: dbOrderId,
+      status: 'DISPATCHED'
+    });
+
+  } catch (error) {
+    console.error('[Reassign Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
     // 3. Dispatch WhatsApp Notification to assigned Rider in background
     sendWhatsAppMessage({
       messaging_product: 'whatsapp',
