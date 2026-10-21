@@ -137,7 +137,14 @@ function toggleCart(open) {
 // EVENT LISTENERS & CHECKOUT
 // ==========================================
 
-if (openCartBtn) openCartBtn.addEventListener('click', () => toggleCart(true));
+// Cart Button Toggle (Opens if closed, closes if open)
+if (openCartBtn) {
+  openCartBtn.addEventListener('click', () => {
+    const isOpen = cartDrawer && cartDrawer.classList.contains('open');
+    toggleCart(!isOpen);
+  });
+}
+
 if (closeCartBtn) closeCartBtn.addEventListener('click', () => toggleCart(false));
 if (cartOverlay) cartOverlay.addEventListener('click', () => toggleCart(false));
 
