@@ -6,109 +6,108 @@
   <title>Kimana Fries | Fast Delivery</title>
   <link rel="stylesheet" href="style.css">
   <link rel="manifest" href="./manifest.json">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>">
-<meta name="theme-color" content="#e63946">
-<link rel="apple-touch-icon" href="/fries/icons/icon-192.png">
-
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>">
+  <meta name="theme-color" content="#e63946">
+  <link rel="apple-touch-icon" href="/fries/icons/icon-192.png">
 </head>
 <body>
 
-  <!-- Header -->
-  <header class="navbar">
-    <div class="logo">🍟 Kimana Fries</div>
-    <button class="cart-btn" id="openCartBtn">
-      Cart (<span id="cartCount">0</span>)
-    </button>
-    <button id="installBtn" class="install-btn" style="display: none;">📲 Install App</button>
-  </header>
-<!-- Hamburger Header Button & Side Navigation Drawer -->
-<header class="app-top-bar">
-  <button class="menu-toggle-btn" id="menuToggleBtn" aria-label="Open Navigation Menu">
-    ☰
-  </button>
-  <div class="brand-title">🍟 Kimana Fries</div>
-</header>
-
-<!-- Backdrop Overlay -->
-<div class="menu-overlay" id="menuOverlay"></div>
-
-<!-- Slide-out Side Drawer -->
-<nav class="side-drawer" id="sideDrawer">
-  <div class="drawer-header">
-    <div class="drawer-brand">
-      <span class="brand-icon">⚡</span>
-      <div>
-        <h3>BodaSwift</h3>
-        <p>Kimana Fries Dispatch</p>
-      </div>
+  <!-- Unified Top Navigation Bar -->
+  <header class="app-top-bar">
+    <div class="nav-left">
+      <button class="menu-toggle-btn" id="menuToggleBtn" aria-label="Open Navigation Menu">
+        ☰
+      </button>
+      <div class="brand-title">🍟 Kimana Fries</div>
     </div>
-    <button class="close-drawer-btn" id="closeDrawerBtn">&times;</button>
-  </div>
+    
+    <div class="nav-right">
+      <button id="installBtn" class="install-btn" style="display: none;">📲 Install</button>
+      <button class="cart-btn" id="openCartBtn">
+        Cart (<span id="cartCount">0</span>)
+      </button>
+    </div>
+  </header>
 
-  <div class="drawer-content">
-    <div class="drawer-section-title">Navigation Portals</div>
+  <!-- Backdrop Overlay -->
+  <div class="menu-overlay" id="menuOverlay"></div>
 
-    <a href="./index.html" class="drawer-link active">
-      <span class="link-icon">🍟</span>
-      <div class="link-text">
-        <strong>Order Counter</strong>
-        <small>Place new orders</small>
+  <!-- Slide-out Side Drawer Navigation -->
+  <nav class="side-drawer" id="sideDrawer">
+    <div class="drawer-header">
+      <div class="drawer-brand">
+        <span class="brand-icon">⚡</span>
+        <div>
+          <h3>BodaSwift</h3>
+          <p>Kimana Fries Dispatch</p>
+        </div>
       </div>
-    </a>
+      <button class="close-drawer-btn" id="closeDrawerBtn">&times;</button>
+    </div>
 
-    <a href="./customer-dashboard.html" class="drawer-link">
-      <span class="link-icon">📦</span>
-      <div class="link-text">
-        <strong>Customer Dashboard</strong>
-        <small>Track active & past orders</small>
-      </div>
-    </a>
+    <div class="drawer-content">
+      <div class="drawer-section-title">Navigation Portals</div>
 
-    <a href="./rider-dashboard.html" class="drawer-link">
-      <span class="link-icon">🛵</span>
-      <div class="link-text">
-        <strong>Rider Dashboard</strong>
-        <small>Claim shifts & view deliveries</small>
-      </div>
-    </a>
+      <a href="./index.html" class="drawer-link active">
+        <span class="link-icon">🍟</span>
+        <div class="link-text">
+          <strong>Order Counter</strong>
+          <small>Place new orders</small>
+        </div>
+      </a>
 
-    <a href="./rider.html" class="drawer-link">
-      <span class="link-icon">👤</span>
-      <div class="link-text">
-        <strong>Rider Shift Portal</strong>
-        <small>Toggle Online/Offline status</small>
-      </div>
-    </a>
+      <a href="./customer-dashboard.html" class="drawer-link">
+        <span class="link-icon">📦</span>
+        <div class="link-text">
+          <strong>Customer Dashboard</strong>
+          <small>Track active & past orders</small>
+        </div>
+      </a>
 
-    <div class="drawer-divider"></div>
+      <a href="./rider-dashboard.html" class="drawer-link">
+        <span class="link-icon">🛵</span>
+        <div class="link-text">
+          <strong>Rider Dashboard</strong>
+          <small>Claim shifts & view deliveries</small>
+        </div>
+      </a>
 
-    <div class="drawer-section-title">Management</div>
+      <a href="./rider.html" class="drawer-link">
+        <span class="link-icon">👤</span>
+        <div class="link-text">
+          <strong>Rider Shift Portal</strong>
+          <small>Toggle Online/Offline status</small>
+        </div>
+      </a>
 
-    <a href="./manager.html" class="drawer-link">
-      <span class="link-icon">🍳</span>
-      <div class="link-text">
-        <strong>Kitchen Operations</strong>
-        <small>Manager live stream & dispatches</small>
-      </div>
-    </a>
-  </div>
+      <div class="drawer-divider"></div>
 
-  <div class="drawer-footer">
-    <small>BodaSwift v1.0 • Powered by Kimana Fries</small>
-  </div>
-</nav>
+      <div class="drawer-section-title">Management</div>
+
+      <a href="./manager.html" class="drawer-link">
+        <span class="link-icon">🍳</span>
+        <div class="link-text">
+          <strong>Kitchen Operations</strong>
+          <small>Manager live stream & dispatches</small>
+        </div>
+      </a>
+    </div>
+
+    <div class="drawer-footer">
+      <small>BodaSwift v1.0 • Powered by Kimana Fries</small>
+    </div>
+  </nav>
 
   <!-- Hero Banner -->
   <section class="hero">
-  <!-- Animated Floating Appetite Bubbles -->
-  <div class="bubble bubble-1"></div>
-  <div class="bubble bubble-2"></div>
-  <div class="bubble bubble-3"></div>
-  <div class="bubble bubble-4"></div>
+    <div class="bubble bubble-1"></div>
+    <div class="bubble bubble-2"></div>
+    <div class="bubble bubble-3"></div>
+    <div class="bubble bubble-4"></div>
 
-  <h1>🍟 Fresh & Piping Hot Kimana Fries</h1>
-  <p>Order direct & get instant BodaSwift delivery!</p>
-</section>
+    <h1>🍟 Fresh & Piping Hot Kimana Fries</h1>
+    <p>Order direct & get instant BodaSwift delivery!</p>
+  </section>
 
   <!-- Main Content: Menu -->
   <main class="container">
@@ -151,45 +150,44 @@
     </div>
   </aside>
 
-  <!-- ADDED: Script tag at the end of the body -->
   <script src="app.js"></script>
- <script>
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      // Automatically detect subfolder or root deployment path
-      const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
-      const swUrl = basePath + '/sw.js';
+  <script>
+    // Service Worker Registration
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        const basePath = window.location.pathname.substring(0, window.location.pathname.lastIndexOf('/'));
+        const swUrl = basePath + '/sw.js';
 
-      navigator.serviceWorker.register(swUrl, { scope: basePath + '/' })
-        .then((reg) => console.log('Service Worker registered! Scope:', reg.scope))
-        .catch((err) => console.error('Service Worker registration failed:', err));
+        navigator.serviceWorker.register(swUrl, { scope: basePath + '/' })
+          .then((reg) => console.log('Service Worker registered! Scope:', reg.scope))
+          .catch((err) => console.error('Service Worker registration failed:', err));
+      });
+    }
+
+    // PWA Install Prompt Logic
+    let deferredPrompt;
+    const installBtn = document.getElementById('installBtn');
+
+    window.addEventListener('beforeinstallprompt', (e) => {
+      e.preventDefault();
+      deferredPrompt = e;
+      if (installBtn) installBtn.style.display = 'inline-block';
     });
-  }
 
-  // PWA Install Prompt Logic
-  let deferredPrompt;
-  const installBtn = document.getElementById('installBtn');
+    if (installBtn) {
+      installBtn.addEventListener('click', async () => {
+        if (!deferredPrompt) return;
+        deferredPrompt.prompt();
+        const { outcome } = await deferredPrompt.userChoice;
+        console.log(`User response: ${outcome}`);
+        deferredPrompt = null;
+        installBtn.style.display = 'none';
+      });
+    }
 
-  window.addEventListener('beforeinstallprompt', (e) => {
-    e.preventDefault();
-    deferredPrompt = e;
-    if (installBtn) installBtn.style.display = 'block';
-  });
-
-  if (installBtn) {
-    installBtn.addEventListener('click', async () => {
-      if (!deferredPrompt) return;
-      deferredPrompt.prompt();
-      const { outcome } = await deferredPrompt.userChoice;
-      console.log(`User response: ${outcome}`);
-      deferredPrompt = null;
-      installBtn.style.display = 'none';
+    window.addEventListener('appinstalled', () => {
+      if (installBtn) installBtn.style.display = 'none';
     });
-  }
-
-  window.addEventListener('appinstalled', () => {
-    if (installBtn) installBtn.style.display = 'none';
-  });
-</script>
+  </script>
 </body>
 </html>
