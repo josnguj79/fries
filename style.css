@@ -128,6 +128,131 @@
   font-size: 1.5rem;
 }
 
+/* ==========================================
+   UNIFIED TOP BAR & SIDE DRAWER STYLES
+   ========================================== */
+
+/* Top Bar Container */
+.app-top-bar {
+  background: var(--mc-red, #da291c);
+  color: white;
+  padding: 0.75rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  position: sticky;
+  top: 0;
+  z-index: 900;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+}
+
+.nav-left, .nav-right {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.menu-toggle-btn {
+  background: transparent;
+  border: none;
+  color: #ffc72c; /* Kimana Yellow */
+  font-size: 1.8rem;
+  cursor: pointer;
+  padding: 0 0.2rem;
+  line-height: 1;
+}
+
+.brand-title {
+  font-weight: 800;
+  font-size: 1.15rem;
+  color: white;
+  letter-spacing: 0.5px;
+}
+
+.cart-btn {
+  background: #ffc72c;
+  color: #1d3557;
+  border: none;
+  padding: 0.45rem 0.85rem;
+  border-radius: 20px;
+  font-weight: bold;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+}
+
+.install-btn {
+  background: rgba(255, 255, 255, 0.2);
+  border: 1px solid white;
+  color: white;
+  padding: 0.4rem 0.7rem;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+/* Backdrop Overlay */
+.menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  height: 100vh;
+  background: rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 998;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.3s ease, visibility 0.3s ease;
+}
+
+.menu-overlay.active {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Side Drawer Panel */
+.side-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 280px;
+  max-width: 80vw;
+  height: 100%;
+  background: #ffffff;
+  z-index: 999;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 4px 0 20px rgba(0,0,0,0.2);
+  display: flex;
+  flex-direction: column;
+}
+
+.side-drawer.open {
+  transform: translateX(0);
+}
+
+/* Drawer Header */
+.drawer-header {
+  background: #1d3557; /* Dark navy */
+  color: white;
+  padding: 1.2rem 1rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.drawer-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.drawer-brand .brand-icon {
+  font-size: 1.5rem;
+}
+
 .drawer-brand h3 {
   font-size: 1.1rem;
   color: #ffc72c;
