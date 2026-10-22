@@ -1061,6 +1061,57 @@ app.post('/api/auth/verify-push-otp', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+app.post('/api/auth/request-push-otp', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ success: false, message: 'Phone required.' });
+
+    const cleanPhone = String(phone).trim();
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000;
+
+    pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
+
+    // Check if user has an active push token
+    const tokenResult = await turso.execute({
+      sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
+      args: [cleanPhone]
+    });
+
+    let pushSent = false;
+    if (tokenResult.rows.length > 0) {
+      await sendPushNotificationToUser(
+        cleanPhone,
+        '🔐 BodaSwift Passcode',
+        `Your access code is: ${otpCode}`,
+        './customer-dashboard.html'
+      );
+      pushSent = true;
+    }
+
+    return res.status(200).json({
+      success: true,
+      pushSent: pushSent,
+      // Provide fallback code if push was not dispatched
+      fallbackCode: pushSent ? null : otpCode,
+      message: pushSent ? 'Push notification sent!' : 'Passcode generated.'
+    });
+
+  } catch (error) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+// Send WhatsApp OTP directly if FCM token isn't registered
+if (tokenResult.rows.length === 0) {
+  await sendWhatsAppMessage({
+    messaging_product: 'whatsapp',
+    to: cleanPhone,
+    type: 'text',
+    text: {
+      body: `🔐 *BodaSwift Security Passcode*\n\nYour portal unlock code is: *${otpCode}*\n\nValid for 5 minutes.`
+    }
+  });
+}
 // ==========================================
 // SERVER INITIALIZATION
 // ==========================================
