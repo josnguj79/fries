@@ -949,22 +949,37 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl) {
       return false;
     }
 
+    let successCount = 0;
+
     for (const row of tokenResult.rows) {
-      await admin.messaging().send({
-        token: row.token,
-        notification: { title, body },
-        data: { url: targetUrl || './index.html' }
-      });
+      try {
+        await admin.messaging().send({
+          token: row.token,
+          notification: { title, body },
+          data: { url: targetUrl || './index.html' }
+        });
+        successCount++;
+      } catch (sendErr) {
+        // If token is invalid or unregistered, purge it from Turso automatically!
+        if (sendErr.code === 'messaging/registration-token-not-registered' || sendErr.errorInfo?.code === 'messaging/registration-token-not-registered') {
+          console.warn(`[FCM Purge] Removing dead token for phone ${cleanPhone}: ${row.token.substring(0, 10)}...`);
+          await turso.execute({
+            sql: `DELETE FROM fcm_tokens WHERE token = ?`,
+            args: [row.token]
+          });
+        } else {
+          console.error('[FCM Send Error for Token]:', sendErr);
+        }
+      }
     }
 
-    console.log(`[Push Sent Successfully] To: ${cleanPhone} | Title: ${title}`);
-    return true;
+    console.log(`[Push Dispatch Summary] To: ${cleanPhone} | Successful Deliveries: ${successCount}`);
+    return successCount > 0;
   } catch (err) {
-    console.error('[FCM Send Error]:', err);
+    console.error('[FCM Send Error Exception]:', err);
     return false;
   }
 }
-
 
 // ==========================================
 // TIMED MULTI-STAGE AUTHENTICATION GATEWAY
