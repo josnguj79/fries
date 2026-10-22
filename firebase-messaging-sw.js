@@ -24,13 +24,24 @@ fetch(`${BACKEND_API}/api/config/firebase`)
 
     const messaging = firebase.messaging();
 
-    // Handle background push messages
+    // Robust background push notification handler (checks both notification and data payloads)
     messaging.onBackgroundMessage((payload) => {
       console.log('[firebase-messaging-sw.js] Received background message: ', payload);
 
-      const notificationTitle = payload?.notification?.title || '🔐 BodaSwift Access Passcode';
+      // Check standard notification object first, then fallback to data payload fields
+      const notificationTitle = 
+        payload?.notification?.title || 
+        payload?.data?.title || 
+        '🔐 BodaSwift Access Passcode';
+
+      const notificationBody = 
+        payload?.notification?.body || 
+        payload?.data?.body || 
+        payload?.data?.message || 
+        'Your verification code is ready.';
+
       const notificationOptions = {
-        body: payload?.notification?.body || 'Your verification code is ready.',
+        body: notificationBody,
         icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
         data: {
           url: payload?.data?.url || './index.html'
@@ -47,7 +58,7 @@ fetch(`${BACKEND_API}/api/config/firebase`)
 // Handle notification click event (opens dashboard)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || './rider-dashboard.html';
+  const targetUrl = event.notification.data?.url || './customer-dashboard.html';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
