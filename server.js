@@ -872,14 +872,10 @@ app.post('/api/admin/reassign', authenticateAdmin, async (req, res) => {
   }
 });
 // ==========================================
-// FIREBASE ADMIN & WEB PUSH NOTIFICATIONS
+// FIREBASE ADMIN & TOKEN REGISTRATION
 // ==========================================
 import admin from 'firebase-admin';
 
-/**
- * Initialize Firebase Admin SDK safely using Render environment variables.
- * Enables server-side token verification and FCM Web Push message dispatch.
- */
 if (!admin.apps.length) {
   try {
     admin.initializeApp({
@@ -897,10 +893,7 @@ if (!admin.apps.length) {
   }
 }
 
-/**
- * Automatically ensure the fcm_tokens table exists in Turso database on startup.
- * Links customer/rider phone numbers to browser FCM registration tokens.
- */
+// Ensure fcm_tokens table exists with correct schema
 turso.execute(`
   CREATE TABLE IF NOT EXISTS fcm_tokens (
     phone_number TEXT, 
@@ -910,14 +903,8 @@ turso.execute(`
   )
 `).catch(err => console.error('[Turso fcm_tokens Table Init Error]:', err));
 
-
-// ==========================================
-// PUSH TOKEN REGISTRATION & DISPATCH HELPERS
-// ==========================================
-
 /**
- * Endpoint: POST /api/notifications/register-token
- * Purpose: Save or update an FCM Web Push device token linked to a specific phone number.
+ * 1. Register or update FCM Web Push token linked to a phone number
  */
 app.post('/api/notifications/register-token', async (req, res) => {
   try {
@@ -939,10 +926,7 @@ app.post('/api/notifications/register-token', async (req, res) => {
     });
 
     console.log(`[FCM Token Saved] Phone: ${cleanPhone} | Role: ${userRole}`);
-    return res.status(200).json({ 
-      success: true, 
-      message: 'Push token registered successfully for device!' 
-    });
+    return res.status(200).json({ success: true, message: 'Push token registered successfully!' });
   } catch (error) {
     console.error('[Token Registration Error]:', error);
     return res.status(500).json({ success: false, message: error.message });
@@ -950,13 +934,7 @@ app.post('/api/notifications/register-token', async (req, res) => {
 });
 
 /**
- * Helper: sendPushNotificationToUser
- * Purpose: Dispatches an FCM Web Push notification to all active devices registered under a phone number.
- * @param {string} phone - Recipient phone number
- * @param {string} title - Push alert header
- * @param {string} body - Push alert text body
- * @param {string} targetUrl - Link opened when user taps notification
- * @returns {Promise<boolean>} - True if at least one push was dispatched, false otherwise.
+ * Helper: Send Push Notification to all devices registered under a phone number
  */
 async function sendPushNotificationToUser(phone, title, body, targetUrl) {
   try {
@@ -971,15 +949,12 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl) {
       return false;
     }
 
-    // Send push notification to all active devices registered for this phone number
     for (const row of tokenResult.rows) {
-      const message = {
+      await admin.messaging().send({
         token: row.token,
         notification: { title, body },
         data: { url: targetUrl || './index.html' }
-      };
-
-      await admin.messaging().send(message);
+      });
     }
 
     console.log(`[Push Sent Successfully] To: ${cleanPhone} | Title: ${title}`);
@@ -992,136 +967,110 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl) {
 
 
 // ==========================================
-// WEB PUSH & WHATSAPP OTP AUTHENTICATION
+// TIMED MULTI-STAGE AUTHENTICATION GATEWAY
 // ==========================================
 
-// In-memory store for active passcodes (Phone Number => { code, expiresAt })
 const pushOtpStore = new Map();
 
 /**
- * Endpoint: POST /api/auth/request-push-otp
- * Purpose: Generates a secure 6-digit OTP code and attempts delivery via Web Push -> WhatsApp -> Direct Screen Fallback.
+ * 2. Request OTP: Attempts Push notification first
  */
 app.post('/api/auth/request-push-otp', async (req, res) => {
   try {
     const { phone } = req.body;
-    if (!phone) {
-      return res.status(400).json({ success: false, message: 'Phone number is required.' });
-    }
+    if (!phone) return res.status(400).json({ success: false, message: 'Phone number required.' });
 
     const cleanPhone = String(phone).trim();
-
-    // 1. Generate secure 6-digit passcode valid for 5 minutes
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000;
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minute validity
 
     pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
 
-    // 2. Check if the user has a registered Web Push FCM token in Turso
-    const tokenResult = await turso.execute({
-      sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
-      args: [cleanPhone]
-    });
+    // Attempt push notification
+    const pushSent = await sendPushNotificationToUser(
+      cleanPhone,
+      '🔐 BodaSwift Access Passcode',
+      `Your verification code is: ${otpCode}. Tap to enter your portal.`,
+      './customer-dashboard.html'
+    );
 
-    let pushSent = false;
-    let whatsappSent = false;
-
-    if (tokenResult.rows.length > 0) {
-      // Primary Channel: Web Push Notification
-      pushSent = await sendPushNotificationToUser(
-        cleanPhone,
-        '🔐 BodaSwift Access Passcode',
-        `Your verification code is: ${otpCode}. Tap to enter your portal.`,
-        './customer-dashboard.html'
-      );
-    } 
-
-    if (!pushSent) {
-      // Secondary Channel Fallback: Direct WhatsApp Message via Meta Cloud API
-      try {
-        await sendWhatsAppMessage({
-          messaging_product: 'whatsapp',
-          to: cleanPhone,
-          type: 'text',
-          text: {
-            body: `🔐 *BodaSwift Security Passcode*\n\nYour portal unlock code is: *${otpCode}*\n\nValid for 5 minutes.`
-          }
-        });
-        whatsappSent = true;
-        console.log(`[WhatsApp OTP Fallback Sent] Phone: ${cleanPhone}`);
-      } catch (waErr) {
-        console.error('[WhatsApp OTP Fallback Error]:', waErr);
-      }
-    }
-
-    console.log(`[OTP Generated] Phone: ${cleanPhone} | Code: ${otpCode} | Push: ${pushSent} | WhatsApp: ${whatsappSent}`);
+    console.log(`[OTP Generated] Phone: ${cleanPhone} | Code: ${otpCode} | Push Attempted: ${pushSent}`);
 
     return res.status(200).json({
       success: true,
       pushSent: pushSent,
-      whatsappSent: whatsappSent,
-      // Provide fallback screen code if both push and WhatsApp channels were unavailable
-      fallbackCode: (!pushSent && !whatsappSent) ? otpCode : null,
-      message: pushSent 
-        ? 'Web Push notification sent!' 
-        : (whatsappSent ? 'Passcode sent via WhatsApp!' : 'Passcode generated.')
+      fallbackCode: otpCode // Sent so frontend can reveal it if timer expires
     });
-
   } catch (error) {
-    console.error('[Request Push OTP Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+    console.error('[Request OTP Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
 
 /**
- * Endpoint: POST /api/auth/verify-push-otp
- * Purpose: Verifies the entered 6-digit OTP passcode and returns a verified session token upon success.
+ * 3. WhatsApp Fallback: Triggered by frontend after 3-minute push timeout
+ */
+app.post('/api/auth/fallback-whatsapp', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) return res.status(400).json({ success: false, message: 'Phone required.' });
+
+    const cleanPhone = String(phone).trim();
+    const record = pushOtpStore.get(cleanPhone);
+
+    if (!record) {
+      return res.status(400).json({ success: false, message: 'No active OTP session found.' });
+    }
+
+    await sendWhatsAppMessage({
+      messaging_product: 'whatsapp',
+      to: cleanPhone,
+      type: 'text',
+      text: {
+        body: `🔐 *BodaSwift Security Passcode (Fallback)*\n\nYour portal unlock code is: *${record.code}*\n\nValid for remaining session time.`
+      }
+    });
+
+    console.log(`[WhatsApp Fallback Sent] Phone: ${cleanPhone}`);
+    return res.status(200).json({ success: true, message: 'Passcode sent via WhatsApp!' });
+  } catch (error) {
+    console.error('[WhatsApp Fallback Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+/**
+ * 4. Verify Passcode Endpoint
  */
 app.post('/api/auth/verify-push-otp', async (req, res) => {
   try {
     const { phone, code } = req.body;
-    if (!phone || !code) {
-      return res.status(400).json({ success: false, message: 'Phone and OTP code are required.' });
-    }
+    if (!phone || !code) return res.status(400).json({ success: false, message: 'Phone and code required.' });
 
     const cleanPhone = String(phone).trim();
     const cleanCode = String(code).trim();
     const record = pushOtpStore.get(cleanPhone);
 
-    if (!record) {
-      return res.status(401).json({ success: false, message: 'No active OTP request found for this phone.' });
-    }
-
-    if (Date.now() > record.expiresAt) {
-      pushOtpStore.delete(cleanPhone);
-      return res.status(401).json({ success: false, message: 'OTP expired. Please request a new code.' });
+    if (!record || Date.now() > record.expiresAt) {
+      if (record) pushOtpStore.delete(cleanPhone);
+      return res.status(401).json({ success: false, message: 'OTP expired or not found. Request a new one.' });
     }
 
     if (record.code !== cleanCode) {
-      return res.status(401).json({ success: false, message: 'Invalid OTP code. Please try again.' });
+      return res.status(401).json({ success: false, message: 'Invalid OTP code.' });
     }
 
-    // Clear single-use passcode upon verification
     pushOtpStore.delete(cleanPhone);
-
-    // Issue verified access token
     const sessionToken = `bodaswift_session_${Math.random().toString(36).substring(2)}_${Date.now()}`;
 
-    return res.status(200).json({
-      success: true,
-      message: 'Verification successful!',
-      token: sessionToken,
-      phone: cleanPhone
-    });
-
+    return res.status(200).json({ success: true, token: sessionToken, phone: cleanPhone });
   } catch (error) {
-    console.error('[Verify OTP Exception]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+    return res.status(500).json({ success: false, message: error.message });
   }
 });
+
 /**
- * Endpoint: GET /api/config/firebase
- * Purpose: Exposes public Firebase configuration keys from Render environment variables to the frontend.
+ * 5. Dynamic Client Config Endpoint (Loads keys from Render environment variables)
  */
 app.get('/api/config/firebase', (req, res) => {
   try {
@@ -1135,7 +1084,7 @@ app.get('/api/config/firebase', (req, res) => {
       vapidKey: process.env.FIREBASE_VAPID_KEY
     });
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to load client configuration.' });
+    res.status(500).json({ success: false, message: 'Failed to load configuration.' });
   }
 });
 // ==========================================
