@@ -1,3 +1,64 @@
+import admin from 'firebase-admin';
+
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+    })
+  });
+}
+
+// Store push tokens in Turso database table (ensure you have an fcm_tokens table)
+// CREATE TABLE IF NOT EXISTS fcm_tokens (phone_number TEXT, token TEXT, role TEXT, PRIMARY KEY(phone_number, token));
+
+// 1. Register Push Token Endpoint
+app.post('/api/notifications/register-token', async (req, res) => {
+  try {
+    const { phone, token, role } = req.body;
+    if (!phone || !token) {
+      return res.status(400).json({ success: false, message: 'Missing phone or token.' });
+    }
+
+    await turso.execute({
+      sql: `INSERT INTO fcm_tokens (phone_number, token, role) VALUES (?, ?, ?) ON CONFLICT(phone_number, token) DO UPDATE SET role = excluded.role`,
+      args: [String(phone).trim(), String(token).trim(), role || 'customer']
+    });
+
+    return res.status(200).json({ success: true, message: 'Push token registered successfully!' });
+  } catch (error) {
+    console.error('[Token Registration Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 2. Helper: Send Push Notification to a Specific Phone Number
+async function sendPushNotificationToUser(phone, title, body, targetUrl) {
+  try {
+    const tokenResult = await turso.execute({
+      sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
+      args: [String(phone).trim()]
+    });
+
+    if (tokenResult.rows.length === 0) return;
+
+    const messages = tokenResult.rows.map(row => ({
+      token: row.token,
+      notification: { title, body },
+      data: { url: targetUrl || './index.html' }
+    }));
+
+    // Send batch or individual messages via FCM
+    for (const msg of messages) {
+      await admin.messaging().send(msg);
+    }
+    console.log(`[Push Sent] To: ${phone} | Title: ${title}`);
+  } catch (err) {
+    console.error('[FCM Send Error]:', err);
+  }
+}
 // ==========================================
 // DEPENDENCIES & ENVIRONMENT SETUP
 // ==========================================
@@ -871,6 +932,67 @@ app.post('/api/admin/reassign', authenticateAdmin, async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+import admin from 'firebase-admin';
+
+// Initialize Firebase Admin SDK
+if (!admin.apps.length) {
+  admin.initializeApp({
+    credential: admin.credential.cert({
+      projectId: process.env.FIREBASE_PROJECT_ID,
+      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
+    })
+  });
+}
+
+// Store push tokens in Turso database table (ensure you have an fcm_tokens table)
+// CREATE TABLE IF NOT EXISTS fcm_tokens (phone_number TEXT, token TEXT, role TEXT, PRIMARY KEY(phone_number, token));
+
+// 1. Register Push Token Endpoint
+app.post('/api/notifications/register-token', async (req, res) => {
+  try {
+    const { phone, token, role } = req.body;
+    if (!phone || !token) {
+      return res.status(400).json({ success: false, message: 'Missing phone or token.' });
+    }
+
+    await turso.execute({
+      sql: `INSERT INTO fcm_tokens (phone_number, token, role) VALUES (?, ?, ?) ON CONFLICT(phone_number, token) DO UPDATE SET role = excluded.role`,
+      args: [String(phone).trim(), String(token).trim(), role || 'customer']
+    });
+
+    return res.status(200).json({ success: true, message: 'Push token registered successfully!' });
+  } catch (error) {
+    console.error('[Token Registration Error]:', error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// 2. Helper: Send Push Notification to a Specific Phone Number
+async function sendPushNotificationToUser(phone, title, body, targetUrl) {
+  try {
+    const tokenResult = await turso.execute({
+      sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
+      args: [String(phone).trim()]
+    });
+
+    if (tokenResult.rows.length === 0) return;
+
+    const messages = tokenResult.rows.map(row => ({
+      token: row.token,
+      notification: { title, body },
+      data: { url: targetUrl || './index.html' }
+    }));
+
+    // Send batch or individual messages via FCM
+    for (const msg of messages) {
+      await admin.messaging().send(msg);
+    }
+    console.log(`[Push Sent] To: ${phone} | Title: ${title}`);
+  } catch (err) {
+    console.error('[FCM Send Error]:', err);
+  }
+}
 
 
 // ==========================================
