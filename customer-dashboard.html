@@ -251,5 +251,148 @@
       }
     }
   </script>
+  <!-- ========================================== -->
+<!-- WEB PUSH OTP SECURITY GATEWAY MODAL -->
+<!-- ========================================== -->
+<div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+  <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
+    
+    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔔</div>
+    <h3 style="color: #1e293b; font-size: 1.3rem; margin-bottom: 0.5rem;">Web Push Verification</h3>
+    <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.4;">
+      Enter your phone number to receive a 1-click Web Push security passcode on your device.
+    </p>
+
+    <!-- STEP 1: Phone Request -->
+    <div id="pushPhoneStep">
+      <input type="tel" id="gatePhoneInput" placeholder="e.g. +254712345678" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1rem; text-align: center; margin-bottom: 1rem; outline: none;">
+      <button id="requestPushBtn" onclick="requestWebPushOtp()" style="width: 100%; padding: 0.85rem; background: #da291c; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s;">
+        Send Web Push OTP 📲
+      </button>
+    </div>
+
+    <!-- STEP 2: Code Entry -->
+    <div id="pushCodeStep" style="display: none;">
+      <input type="text" id="gateCodeInput" placeholder="••••••" maxlength="6" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1.4rem; text-align: center; letter-spacing: 6px; margin-bottom: 1rem; outline: none;">
+      <button id="verifyPushBtn" onclick="verifyWebPushOtp()" style="width: 100%; padding: 0.85rem; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s;">
+        Verify & Unlock Portal 🔓
+      </button>
+    </div>
+
+    <div id="gateStatusMsg" style="font-size: 0.8rem; font-weight: 600; margin-top: 1rem; min-height: 1.2rem;"></div>
+  </div>
+</div>
+
+<script>
+  const BACKEND_API = 'https://fries-v0l8.onrender.com';
+
+  // Check existing session on load
+  document.addEventListener('DOMContentLoaded', () => {
+    const verifiedPhone = sessionStorage.getItem('bodaswift_verified_phone');
+    const sessionToken = sessionStorage.getItem('bodaswift_session_token');
+
+    if (verifiedPhone && sessionToken) {
+      document.getElementById('pushSecurityGate').style.display = 'none';
+      if (typeof initDashboard === 'function') initDashboard(verifiedPhone);
+    } else {
+      // Pre-fill phone from localStorage if available
+      const savedPhone = localStorage.getItem('kimana_customer_phone');
+      if (savedPhone) {
+        document.getElementById('gatePhoneInput').value = savedPhone;
+      }
+    }
+  });
+
+  /**
+   * Request Web Push OTP
+   */
+  async function requestWebPushOtp() {
+    const phoneInput = document.getElementById('gatePhoneInput');
+    const statusMsg = document.getElementById('gateStatusMsg');
+    const phone = phoneInput.value.trim();
+
+    if (!phone) {
+      statusMsg.style.color = '#da291c';
+      statusMsg.textContent = 'Please enter a valid phone number.';
+      return;
+    }
+
+    statusMsg.style.color = '#0284c7';
+    statusMsg.textContent = 'Dispatching Web Push notification...';
+
+    try {
+      const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        statusMsg.style.color = '#16a34a';
+        statusMsg.textContent = '🔔 Push sent! Check your notifications for code.';
+        document.getElementById('pushPhoneStep').style.display = 'none';
+        document.getElementById('pushCodeStep').style.display = 'block';
+      } else {
+        statusMsg.style.color = '#da291c';
+        statusMsg.textContent = data.message || 'Failed to dispatch push notification.';
+      }
+    } catch (err) {
+      console.error(err);
+      statusMsg.style.color = '#da291c';
+      statusMsg.textContent = 'Server connection error.';
+    }
+  }
+
+  /**
+   * Verify Entered Passcode
+   */
+  async function verifyWebPushOtp() {
+    const phone = document.getElementById('gatePhoneInput').value.trim();
+    const code = document.getElementById('gateCodeInput').value.trim();
+    const statusMsg = document.getElementById('gateStatusMsg');
+
+    if (code.length !== 6) {
+      statusMsg.style.color = '#da291c';
+      statusMsg.textContent = 'Please enter the 6-digit code.';
+      return;
+    }
+
+    statusMsg.style.color = '#0284c7';
+    statusMsg.textContent = 'Verifying passcode...';
+
+    try {
+      const res = await fetch(`${BACKEND_API}/api/auth/verify-push-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone, code })
+      });
+
+      const data = await res.json();
+
+      if (res.ok) {
+        sessionStorage.setItem('bodaswift_session_token', data.token);
+        sessionStorage.setItem('bodaswift_verified_phone', data.phone);
+
+        statusMsg.style.color = '#16a34a';
+        statusMsg.textContent = '🔓 Access granted! Loading dashboard...';
+
+        setTimeout(() => {
+          document.getElementById('pushSecurityGate').style.display = 'none';
+          if (typeof initDashboard === 'function') initDashboard(data.phone);
+        }, 800);
+
+      } else {
+        statusMsg.style.color = '#da291c';
+        statusMsg.textContent = data.message || 'Invalid passcode.';
+      }
+    } catch (err) {
+      console.error(err);
+      statusMsg.style.color = '#da291c';
+      statusMsg.textContent = 'Network error verifying passcode.';
+    }
+  }
+</script>
 </body>
 </html>
