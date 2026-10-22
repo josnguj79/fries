@@ -285,14 +285,21 @@
     let cachedFallbackCode = '';
 
     // Dynamically load Firebase config from Render environment variables via server endpoint
+    // Dynamically load Firebase config from Render environment variables via server endpoint
     async function initFirebaseClient() {
       try {
         const res = await fetch(`${BACKEND_API}/api/config/firebase`);
         const config = await res.json();
-        VAPID_KEY = config.vapidKey;
 
+        if (!config.apiKey) {
+          console.error('❌ [Firebase Error] Render environment variables for Firebase client are missing or empty!', config);
+          return;
+        }
+
+        VAPID_KEY = config.vapidKey;
         app = initializeApp(config);
         messaging = getMessaging(app);
+        console.log('✅ Firebase Client successfully initialized via Render config!');
       } catch (err) {
         console.error('Failed to load Firebase client config:', err);
       }
