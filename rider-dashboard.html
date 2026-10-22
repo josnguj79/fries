@@ -469,82 +469,130 @@ async function markDelivered(orderId) {
     }
   }
 </script>
-  <script>
-    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
+  <div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+  <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: sans-serif;">
+    
+    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔐</div>
+    <h3 style="color: #1e293b; font-size: 1.3rem; margin-bottom: 0.5rem;">BodaSwift Access Gate</h3>
+    <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem;">Enter your phone number to generate an access passcode.</p>
 
-const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
-};
+    <!-- Phone Entry Step -->
+    <div id="phoneStep">
+      <input type="tel" id="gatePhoneInput" placeholder="e.g. 254739612301" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1rem; text-align: center; margin-bottom: 1rem;">
+      <button id="requestOtpBtn" onclick="handleOtpRequest()" style="width: 100%; padding: 0.85rem; background: #da291c; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+        Get Security Passcode 🔑
+      </button>
+    </div>
 
-const app = initializeApp(firebaseConfig);
-const messaging = getMessaging(app);
+    <!-- Code Verification Step -->
+    <div id="codeStep" style="display: none;">
+      <div id="fallbackCodeDisplay" style="display: none; background: #f1f5f9; border: 2px dashed #0284c7; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;">
+        <span style="font-size: 0.8rem; color: #475569;">Your Passcode:</span><br>
+        <strong id="displayCodeText" style="font-size: 1.6rem; color: #0284c7; letter-spacing: 4px;">------</strong>
+      </div>
 
-/**
- * Call this function immediately after the user enters their phone number (e.g. 254739612301)
- */
-async function registerDeviceForPush(phoneNumber) {
-  try {
-    // 1. Request Browser Permission
-    const permission = await Notification.requestPermission();
-    if (permission !== 'granted') {
-      alert('⚠️ Push notifications are blocked! Please enable notifications in your browser settings to receive OTPs.');
-      return false;
+      <input type="text" id="gateCodeInput" placeholder="••••••" maxlength="6" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1.4rem; text-align: center; letter-spacing: 6px; margin-bottom: 1rem;">
+      <button onclick="verifyPasscode()" style="width: 100%; padding: 0.85rem; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+        Unlock Portal 🔓
+      </button>
+    </div>
+
+    <div id="gateStatusMsg" style="font-size: 0.8rem; font-weight: 600; margin-top: 1rem; min-height: 1.2rem;"></div>
+  </div>
+</div>
+
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+  import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
+
+  const firebaseConfig = {
+    apiKey: "YOUR_FIREBASE_API_KEY",
+    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+    projectId: "YOUR_PROJECT_ID",
+    messagingSenderId: "YOUR_SENDER_ID",
+    appId: "YOUR_APP_ID"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const messaging = getMessaging(app);
+  const BACKEND_API = 'https://fries-v0l8.onrender.com';
+
+  window.handleOtpRequest = async function() {
+    const phone = document.getElementById('gatePhoneInput').value.trim();
+    const statusMsg = document.getElementById('gateStatusMsg');
+    if (!phone) return alert('Please enter your phone number');
+
+    statusMsg.style.color = '#0284c7';
+    statusMsg.textContent = 'Requesting permission & generating passcode...';
+
+    // 1. Request Browser Permission on User Click
+    let fcmToken = null;
+    try {
+      const permission = await Notification.requestPermission();
+      if (permission === 'granted') {
+        fcmToken = await getToken(messaging, { vapidKey: 'YOUR_FIREBASE_VAPID_KEY' });
+        
+        // Register token with backend
+        await fetch(`${BACKEND_API}/api/notifications/register-token`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone, token: fcmToken, role: 'customer' })
+        });
+      }
+    } catch (e) {
+      console.warn('Push permission skipped or blocked:', e);
     }
 
-    // 2. Get FCM Device Token using your Web Push VAPID Key from Firebase Console
-    const currentToken = await getToken(messaging, {
-      vapidKey: 'YOUR_FIREBASE_VAPID_KEY_FROM_PROJECT_SETTINGS'
-    });
+    // 2. Request OTP Code from Backend
+    try {
+      const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ phone })
+      });
 
-    if (!currentToken) {
-      console.warn('Failed to get FCM device token.');
-      return false;
+      const data = await res.json();
+      if (res.ok) {
+        document.getElementById('phoneStep').style.display = 'none';
+        document.getElementById('codeStep').style.display = 'block';
+
+        // If push is active, alert user; otherwise show on-screen fallback
+        if (fcmToken) {
+          statusMsg.style.color = '#16a34a';
+          statusMsg.textContent = '🔔 Push notification sent to your device!';
+        } else {
+          statusMsg.style.color = '#d97706';
+          statusMsg.textContent = 'Notifications disabled. Use the code displayed below:';
+          document.getElementById('fallbackCodeDisplay').style.display = 'block';
+          document.getElementById('displayCodeText').textContent = data.fallbackCode || 'Check Server';
+        }
+      }
+    } catch (err) {
+      statusMsg.style.color = '#da291c';
+      statusMsg.textContent = 'Server error requesting passcode.';
     }
+  };
 
-    console.log('FCM Token generated:', currentToken);
-
-    // 3. Register Token + Phone Number with your Render Backend
-    const response = await fetch('https://fries-v0l8.onrender.com/api/notifications/register-token', {
+  window.verifyPasscode = async function() {
+    const phone = document.getElementById('gatePhoneInput').value.trim();
+    const code = document.getElementById('gateCodeInput').value.trim();
+    
+    const res = await fetch(`${BACKEND_API}/api/auth/verify-push-otp`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        phone: phoneNumber,
-        token: currentToken,
-        role: 'customer' // or 'rider' depending on the portal
-      })
+      body: JSON.stringify({ phone, code })
     });
 
-    const data = await response.json();
-    if (response.ok) {
-      console.log('✅ Device successfully registered for push notifications!');
-      return true;
+    const data = await res.json();
+    if (res.ok) {
+      sessionStorage.setItem('bodaswift_session_token', data.token);
+      sessionStorage.setItem('bodaswift_verified_phone', data.phone);
+      document.getElementById('pushSecurityGate').style.display = 'none';
+      if (typeof initDashboard === 'function') initDashboard(data.phone);
     } else {
-      console.error('Failed to register token on server:', data.message);
-      return false;
+      alert(data.message || 'Invalid passcode.');
     }
-
-  } catch (error) {
-    console.error('Error during push registration:', error);
-    return false;
-  }
-}
-
-// Attach this to your phone input flow (e.g., right before requesting OTP)
-window.setupPushAndRequestOtp = async function() {
-  const phone = document.getElementById('gatePhoneInput').value.trim();
-  if (!phone) return alert('Please enter a phone number first.');
-
-  // Register device token first so the backend can find it when sending push
-  await registerDeviceForPush(phone);
-
-  // Then proceed to request the Web Push OTP
-  requestWebPushOtp();
-};
-  </script>
+  };
+</script>
 </body>
 </html>
