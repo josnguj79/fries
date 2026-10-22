@@ -394,5 +394,82 @@
     }
   }
 </script>
+  <script>
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
+
+const firebaseConfig = {
+  apiKey: "YOUR_FIREBASE_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
+};
+
+const app = initializeApp(firebaseConfig);
+const messaging = getMessaging(app);
+
+/**
+ * Call this function immediately after the user enters their phone number (e.g. 254739612301)
+ */
+async function registerDeviceForPush(phoneNumber) {
+  try {
+    // 1. Request Browser Permission
+    const permission = await Notification.requestPermission();
+    if (permission !== 'granted') {
+      alert('⚠️ Push notifications are blocked! Please enable notifications in your browser settings to receive OTPs.');
+      return false;
+    }
+
+    // 2. Get FCM Device Token using your Web Push VAPID Key from Firebase Console
+    const currentToken = await getToken(messaging, {
+      vapidKey: 'YOUR_FIREBASE_VAPID_KEY_FROM_PROJECT_SETTINGS'
+    });
+
+    if (!currentToken) {
+      console.warn('Failed to get FCM device token.');
+      return false;
+    }
+
+    console.log('FCM Token generated:', currentToken);
+
+    // 3. Register Token + Phone Number with your Render Backend
+    const response = await fetch('https://fries-v0l8.onrender.com/api/notifications/register-token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        phone: phoneNumber,
+        token: currentToken,
+        role: 'customer' // or 'rider' depending on the portal
+      })
+    });
+
+    const data = await response.json();
+    if (response.ok) {
+      console.log('✅ Device successfully registered for push notifications!');
+      return true;
+    } else {
+      console.error('Failed to register token on server:', data.message);
+      return false;
+    }
+
+  } catch (error) {
+    console.error('Error during push registration:', error);
+    return false;
+  }
+}
+
+// Attach this to your phone input flow (e.g., right before requesting OTP)
+window.setupPushAndRequestOtp = async function() {
+  const phone = document.getElementById('gatePhoneInput').value.trim();
+  if (!phone) return alert('Please enter a phone number first.');
+
+  // Register device token first so the backend can find it when sending push
+  await registerDeviceForPush(phone);
+
+  // Then proceed to request the Web Push OTP
+  requestWebPushOtp();
+};
+  </script>
 </body>
 </html>
