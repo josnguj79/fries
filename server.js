@@ -993,7 +993,93 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl) {
     console.error('[FCM Send Error]:', err);
   }
 }
+// In-memory or database OTP store (Order ID / Phone => { code, expiresAt })
+const pushOtpStore = new Map();
 
+/**
+ * 1. POST Endpoint: Request Web Push OTP
+ */
+app.post('/api/auth/request-push-otp', async (req, res) => {
+  try {
+    const { phone } = req.body;
+    if (!phone) {
+      return res.status(400).json({ success: false, message: 'Phone number required.' });
+    }
+
+    const cleanPhone = String(phone).trim();
+
+    // Generate a secure 6-digit passcode
+    const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minute validity
+
+    pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
+
+    // Send Web Push Notification via FCM Admin SDK
+    const pushSent = await sendPushNotificationToUser(
+      cleanPhone,
+      '🔐 BodaSwift Access Passcode',
+      `Your verification code is: ${otpCode}. Tap to enter your portal.`,
+      './customer-dashboard.html'
+    );
+
+    console.log(`[Web Push OTP Sent] Phone: ${cleanPhone} | Code: ${otpCode}`);
+
+    return res.status(200).json({
+      success: true,
+      message: 'Web Push notification sent! Check your browser / device notifications.'
+    });
+
+  } catch (error) {
+    console.error('[Push OTP Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
+
+/**
+ * 2. POST Endpoint: Verify Web Push OTP & Return Access Token
+ */
+app.post('/api/auth/verify-push-otp', async (req, res) => {
+  try {
+    const { phone, code } = req.body;
+    if (!phone || !code) {
+      return res.status(400).json({ success: false, message: 'Phone and OTP code are required.' });
+    }
+
+    const cleanPhone = String(phone).trim();
+    const cleanCode = String(code).trim();
+    const record = pushOtpStore.get(cleanPhone);
+
+    if (!record) {
+      return res.status(401).json({ success: false, message: 'No OTP requested for this phone.' });
+    }
+
+    if (Date.now() > record.expiresAt) {
+      pushOtpStore.delete(cleanPhone);
+      return res.status(401).json({ success: false, message: 'OTP expired. Please request a new one.' });
+    }
+
+    if (record.code !== cleanCode) {
+      return res.status(401).json({ success: false, message: 'Invalid OTP code. Please try again.' });
+    }
+
+    // Clear used OTP
+    pushOtpStore.delete(cleanPhone);
+
+    // Generate verified token
+    const sessionToken = `bodaswift_session_${Math.random().toString(36).substring(2)}`;
+
+    return res.status(200).json({
+      success: true,
+      message: 'Verification successful!',
+      token: sessionToken,
+      phone: cleanPhone
+    });
+
+  } catch (error) {
+    console.error('[Verify OTP Exception]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
+  }
+});
 
 // ==========================================
 // SERVER INITIALIZATION
