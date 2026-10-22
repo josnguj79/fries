@@ -2,19 +2,19 @@
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-app-compat.js');
 importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-compat.js');
 
-// Initialize Firebase synchronously on initial script evaluation
+// Initialize Firebase statically on initial worker script evaluation
 firebase.initializeApp({
-  apiKey: "AIzaSyByYP8HHxy1LSV6nrG7kBAwMjFh6IuYMC4",
-  authDomain: "bodaswift-auth.firebaseapp.com",
-  projectId: "bodaswift-auth",
-  storageBucket: "bodaswift-auth.firebasestorage.app",
-  messagingSenderId: "973632392043",
-  appId: "1:973632392043:web:3d7439b12e522e04a31a2e",
+  apiKey: "YOUR_FIREBASE_API_KEY",
+  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+  projectId: "YOUR_PROJECT_ID",
+  storageBucket: "YOUR_PROJECT_ID.appspot.com",
+  messagingSenderId: "YOUR_SENDER_ID",
+  appId: "YOUR_APP_ID"
 });
 
 const messaging = firebase.messaging();
 
-// Handle background push messages synchronously on initial evaluation
+// Dedicated background push handler
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message: ', payload);
 
@@ -32,6 +32,10 @@ messaging.onBackgroundMessage((payload) => {
   const notificationOptions = {
     body: notificationBody,
     icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
+    badge: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
+    tag: 'bodaswift-otp-passcode', // Ensures new passcodes replace old ones instead of stacking duplicates!
+    renotify: true,                 // Vibrates/sounds for new incoming passcodes
+    requireInteraction: true,       // Holds notification on screen until user acts
     data: {
       url: payload?.data?.url || './index.html'
     }
@@ -40,7 +44,7 @@ messaging.onBackgroundMessage((payload) => {
   self.registration.showNotification(notificationTitle, notificationOptions);
 });
 
-// Handle notification click event synchronously on initial evaluation
+// Handle notification tap / click event
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const targetUrl = event.notification.data?.url || './customer-dashboard.html';
