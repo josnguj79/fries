@@ -934,9 +934,10 @@ app.post('/api/notifications/register-token', async (req, res) => {
 });
 
 /**
- * Helper: Send Push Notification to all devices registered under a phone number
+ * Helper: Send Dual-Payload Push Notification to all devices registered under a phone number
+ * Includes both 'notification' (for OS background display) and 'data' (for Service Worker handling).
  */
-async function sendPushNotificationToUser(phone, title, body, targetUrl) {
+async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode = null) {
   try {
     const cleanPhone = String(phone).trim();
     const tokenResult = await turso.execute({
@@ -955,12 +956,34 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl) {
       try {
         await admin.messaging().send({
           token: row.token,
-          notification: { title, body },
-          data: { url: targetUrl || './index.html' }
+          // Standard OS display notification
+          notification: { 
+            title: title, 
+            body: body 
+          },
+          // Custom data payload passed directly to firebase-messaging-sw.js
+          data: { 
+            title: String(title),
+            body: String(body),
+            otpCode: otpCode ? String(otpCode) : '',
+            url: targetUrl || './index.html' 
+          },
+          // Platform-specific WebPush tuning
+          webpush: {
+            headers: {
+              Urgency: 'high'
+            },
+            notification: {
+              title: title,
+              body: body,
+              icon: 'https://bodaswift.onrender.com/icons/icon-192.png',
+              requireInteraction: true // Keeps notification visible until user acts
+            }
+          }
         });
         successCount++;
       } catch (sendErr) {
-        // If token is invalid or unregistered, purge it from Turso automatically!
+        // Auto-purge dead/stale tokens from Turso DB
         if (sendErr.code === 'messaging/registration-token-not-registered' || sendErr.errorInfo?.code === 'messaging/registration-token-not-registered') {
           console.warn(`[FCM Purge] Removing dead token for phone ${cleanPhone}: ${row.token.substring(0, 10)}...`);
           await turso.execute({
@@ -980,7 +1003,6 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl) {
     return false;
   }
 }
-
 // ==========================================
 // TIMED MULTI-STAGE AUTHENTICATION GATEWAY
 // ==========================================
@@ -1001,12 +1023,13 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
 
     pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
 
-    // Attempt push notification
+    // Send dual-payload Web Push notification with OTP code
     const pushSent = await sendPushNotificationToUser(
       cleanPhone,
-      '🔐 BodaSwift Access Passcode',
-      `Your verification code is: ${otpCode}. Tap to enter your portal.`,
-      './customer-dashboard.html'
+      '🔐 BodaSwift Security Passcode',
+      `Your portal unlock code is: ${otpCode}`,
+      './customer-dashboard.html',
+      otpCode // Pass code explicitly
     );
 
     console.log(`[OTP Generated] Phone: ${cleanPhone} | Code: ${otpCode} | Push Attempted: ${pushSent}`);
@@ -1014,14 +1037,13 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
     return res.status(200).json({
       success: true,
       pushSent: pushSent,
-      fallbackCode: otpCode // Sent so frontend can reveal it if timer expires
+      fallbackCode: otpCode // Sent for on-screen 3-minute fallback
     });
   } catch (error) {
     console.error('[Request OTP Error]:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
-
 /**
  * 3. WhatsApp Fallback: Triggered by frontend after 3-minute push timeout
  */
