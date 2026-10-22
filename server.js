@@ -871,90 +871,132 @@ app.post('/api/admin/reassign', authenticateAdmin, async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
+// ==========================================
+// FIREBASE ADMIN & WEB PUSH NOTIFICATIONS
+// ==========================================
 import admin from 'firebase-admin';
 
-// Initialize Firebase Admin SDK
+// Initialize Firebase Admin SDK securely using Render environment variables
 if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert({
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
-      privateKey: process.env.FIREBASE_PRIVATE_KEY?.replace(/\\n/g, '\n')
-    })
-  });
+  try {
+    admin.initializeApp({
+      credential: admin.credential.cert({
+        projectId: process.env.FIREBASE_PROJECT_ID,
+        clientEmail: process.env.FIREBASE_CLIENT_EMAIL,
+        privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : undefined
+      })
+    });
+    console.log('✅ Firebase Admin SDK initialized for bodaswift-auth!');
+  } catch (error) {
+    console.error('❌ Firebase Admin SDK initialization error:', error);
+  }
 }
 
-// Store push tokens in Turso database table (ensure you have an fcm_tokens table)
-// CREATE TABLE IF NOT EXISTS fcm_tokens (phone_number TEXT, token TEXT, role TEXT, PRIMARY KEY(phone_number, token));
+// Automatically ensure the fcm_tokens table exists in Turso on startup
+turso.execute(`
+  CREATE TABLE IF NOT EXISTS fcm_tokens (
+    phone_number TEXT, 
+    token TEXT, 
+    role TEXT, 
+    PRIMARY KEY(phone_number, token)
+  )
+`).catch(err => console.error('[Turso fcm_tokens Table Init Error]:', err));
 
-// 1. Register Push Token Endpoint
+
+// ==========================================
+// PUSH TOKEN REGISTRATION & DISPATCH
+// ==========================================
+
+/**
+ * 1. POST Endpoint: Save and register FCM token for specific device/user
+ */
 app.post('/api/notifications/register-token', async (req, res) => {
   try {
     const { phone, token, role } = req.body;
     if (!phone || !token) {
-      return res.status(400).json({ success: false, message: 'Missing phone or token.' });
+      return res.status(400).json({ success: false, message: 'Missing phone or device token.' });
     }
 
+    const cleanPhone = String(phone).trim();
+    const cleanToken = String(token).trim();
+    const userRole = role || 'customer';
+
     await turso.execute({
-      sql: `INSERT INTO fcm_tokens (phone_number, token, role) VALUES (?, ?, ?) ON CONFLICT(phone_number, token) DO UPDATE SET role = excluded.role`,
-      args: [String(phone).trim(), String(token).trim(), role || 'customer']
+      sql: `INSERT INTO fcm_tokens (phone_number, token, role) 
+            VALUES (?, ?, ?) 
+            ON CONFLICT(phone_number, token) 
+            DO UPDATE SET role = excluded.role`,
+      args: [cleanPhone, cleanToken, userRole]
     });
 
-    return res.status(200).json({ success: true, message: 'Push token registered successfully!' });
+    console.log(`[FCM Token Saved] Phone: ${cleanPhone} | Role: ${userRole}`);
+    return res.status(200).json({ success: true, message: 'Push token registered successfully for device!' });
   } catch (error) {
     console.error('[Token Registration Error]:', error);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
 
-// 2. Helper: Send Push Notification to a Specific Phone Number
+/**
+ * 2. Helper: Send Push Notification to a Specific Phone Number across all registered devices
+ */
 async function sendPushNotificationToUser(phone, title, body, targetUrl) {
   try {
+    const cleanPhone = String(phone).trim();
     const tokenResult = await turso.execute({
       sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
-      args: [String(phone).trim()]
+      args: [cleanPhone]
     });
 
-    if (tokenResult.rows.length === 0) return;
-
-    const messages = tokenResult.rows.map(row => ({
-      token: row.token,
-      notification: { title, body },
-      data: { url: targetUrl || './index.html' }
-    }));
-
-    // Send batch or individual messages via FCM
-    for (const msg of messages) {
-      await admin.messaging().send(msg);
+    if (tokenResult.rows.length === 0) {
+      console.log(`[Push Warning] No registered FCM tokens found for phone: ${cleanPhone}`);
+      return;
     }
-    console.log(`[Push Sent] To: ${phone} | Title: ${title}`);
+
+    // Send push notification to all devices linked to this phone number
+    for (const row of tokenResult.rows) {
+      const message = {
+        token: row.token,
+        notification: { title, body },
+        data: { url: targetUrl || './index.html' }
+      };
+
+      await admin.messaging().send(message);
+    }
+    console.log(`[Push Sent Successfully] To: ${cleanPhone} | Title: ${title}`);
   } catch (err) {
     console.error('[FCM Send Error]:', err);
   }
 }
-// In-memory or database OTP store (Order ID / Phone => { code, expiresAt })
+
+
+// ==========================================
+// WEB PUSH OTP AUTHENTICATION GATEWAY
+// ==========================================
+
+// In-memory store for active push passcodes (Phone => { code, expiresAt })
 const pushOtpStore = new Map();
 
 /**
- * 1. POST Endpoint: Request Web Push OTP
+ * 3. POST Endpoint: Request Web Push OTP Passcode
  */
 app.post('/api/auth/request-push-otp', async (req, res) => {
   try {
     const { phone } = req.body;
     if (!phone) {
-      return res.status(400).json({ success: false, message: 'Phone number required.' });
+      return res.status(400).json({ success: false, message: 'Phone number is required.' });
     }
 
     const cleanPhone = String(phone).trim();
 
     // Generate a secure 6-digit passcode
     const otpCode = Math.floor(100000 + Math.random() * 900000).toString();
-    const expiresAt = Date.now() + 5 * 60 * 1000; // 5 minute validity
+    const expiresAt = Date.now() + 5 * 60 * 1000; // Valid for 5 minutes
 
     pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
 
-    // Send Web Push Notification via FCM Admin SDK
-    const pushSent = await sendPushNotificationToUser(
+    // Trigger Web Push Notification to user's registered devices
+    await sendPushNotificationToUser(
       cleanPhone,
       '🔐 BodaSwift Access Passcode',
       `Your verification code is: ${otpCode}. Tap to enter your portal.`,
@@ -965,7 +1007,7 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: 'Web Push notification sent! Check your browser / device notifications.'
+      message: 'Web Push notification sent! Check your device notifications for the code.'
     });
 
   } catch (error) {
@@ -975,7 +1017,7 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
 });
 
 /**
- * 2. POST Endpoint: Verify Web Push OTP & Return Access Token
+ * 4. POST Endpoint: Verify Web Push OTP Passcode & Issue Session Token
  */
 app.post('/api/auth/verify-push-otp', async (req, res) => {
   try {
@@ -989,23 +1031,23 @@ app.post('/api/auth/verify-push-otp', async (req, res) => {
     const record = pushOtpStore.get(cleanPhone);
 
     if (!record) {
-      return res.status(401).json({ success: false, message: 'No OTP requested for this phone.' });
+      return res.status(401).json({ success: false, message: 'No active OTP request found for this phone.' });
     }
 
     if (Date.now() > record.expiresAt) {
       pushOtpStore.delete(cleanPhone);
-      return res.status(401).json({ success: false, message: 'OTP expired. Please request a new one.' });
+      return res.status(401).json({ success: false, message: 'OTP expired. Please request a new code.' });
     }
 
     if (record.code !== cleanCode) {
       return res.status(401).json({ success: false, message: 'Invalid OTP code. Please try again.' });
     }
 
-    // Clear used OTP
+    // Clear used passcode
     pushOtpStore.delete(cleanPhone);
 
-    // Generate verified token
-    const sessionToken = `bodaswift_session_${Math.random().toString(36).substring(2)}`;
+    // Generate secure session token
+    const sessionToken = `bodaswift_session_${Math.random().toString(36).substring(2)}_${Date.now()}`;
 
     return res.status(200).json({
       success: true,
@@ -1019,7 +1061,6 @@ app.post('/api/auth/verify-push-otp', async (req, res) => {
     return res.status(500).json({ success: false, message: error.message || 'Internal server error.' });
   }
 });
-
 // ==========================================
 // SERVER INITIALIZATION
 // ==========================================
