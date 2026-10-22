@@ -104,7 +104,7 @@
   </div>
 
   <!-- ========================================== -->
-  <!-- SECURITY GATEWAY MODAL (WEB PUSH / OTP)   -->
+  <!-- SECURITY GATEWAY MODAL (TIMED FALLBACK)   -->
   <!-- ========================================== -->
   <div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
     <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: sans-serif;">
@@ -123,6 +123,7 @@
 
       <!-- Code Verification Step -->
       <div id="codeStep" style="display: none;">
+        <!-- On-Screen Fallback Display (Revealed after 3 min push timeout) -->
         <div id="fallbackCodeDisplay" style="display: none; background: #f1f5f9; border: 2px dashed #0284c7; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;">
           <span style="font-size: 0.8rem; color: #475569;">Your Passcode (Fallback):</span><br>
           <strong id="displayCodeText" style="font-size: 1.6rem; color: #0284c7; letter-spacing: 4px;">------</strong>
@@ -138,7 +139,7 @@
     </div>
   </div>
 
-  <!-- DASHBOARD & AUTH CONTROLLER SCRIPT -->
+  <!-- DASHBOARD CONTROLLER SCRIPT -->
   <script>
     const API_BASE_URL = 'https://fries-v0l8.onrender.com';
     let activePhone = '';
@@ -150,7 +151,7 @@
     const statusToggle = document.getElementById('statusToggle');
     const statusText = document.getElementById('statusText');
 
-    // Check existing session on load
+    // Check existing session on page load
     document.addEventListener('DOMContentLoaded', () => {
       const verifiedPhone = sessionStorage.getItem('bodaswift_verified_phone');
       const sessionToken = sessionStorage.getItem('bodaswift_session_token');
@@ -326,23 +327,32 @@
     }
   </script>
 
-  <!-- FIREBASE WEB PUSH AUTH SCRIPT -->
+  <!-- FIREBASE WEB PUSH AUTH SCRIPT (WITH TIMED MULTI-STAGE FALLBACK) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
     import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
 
-    const firebaseConfig = {
-      apiKey: "YOUR_FIREBASE_API_KEY",
-      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-      projectId: "YOUR_PROJECT_ID",
-      messagingSenderId: "YOUR_SENDER_ID",
-      appId: "YOUR_APP_ID"
-    };
+    const BACKEND_API = 'https://fries-v0l8.onrender.com';
 
-    const VAPID_KEY = "YOUR_FIREBASE_VAPID_KEY";
+    let app, messaging, VAPID_KEY;
+    let countdownTimer = null;
+    let cachedFallbackCode = '';
 
-    const app = initializeApp(firebaseConfig);
-    const messaging = getMessaging(app);
+    // Dynamically load Firebase config from Render environment variables via server endpoint
+    async function initFirebaseClient() {
+      try {
+        const res = await fetch(`${BACKEND_API}/api/config/firebase`);
+        const config = await res.json();
+        VAPID_KEY = config.vapidKey;
+
+        app = initializeApp(config);
+        messaging = getMessaging(app);
+      } catch (err) {
+        console.error('Failed to load Firebase client config:', err);
+      }
+    }
+
+    initFirebaseClient();
 
     window.handleOtpRequest = async function() {
       const phoneInput = document.getElementById('gatePhoneInput');
@@ -352,11 +362,13 @@
       if (!activePhone) return alert('Please enter your phone number');
 
       statusMsg.style.color = '#0284c7';
-      statusMsg.textContent = 'Requesting permission & generating passcode...';
+      statusMsg.textContent = '🔄 Requesting notification permissions...';
 
+      // 1. Request Browser Permission and Register Device Push Token
       try {
         const permission = await Notification.requestPermission();
-        if (permission === 'granted') {
+        if (permission === 'granted' && messaging) {
+          statusMsg.textContent = '🔄 Registering device push token...';
           const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
           const fcmToken = await getToken(messaging, { 
             vapidKey: VAPID_KEY,
@@ -364,7 +376,7 @@
           });
 
           if (fcmToken) {
-            await fetch(`${API_BASE_URL}/api/notifications/register-token`, {
+            await fetch(`${BACKEND_API}/api/notifications/register-token`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ phone: activePhone, token: fcmToken, role: 'rider' })
@@ -372,11 +384,14 @@
           }
         }
       } catch (e) {
-        console.warn('Push registration error/skipped:', e);
+        console.warn('Push token registration skipped or failed:', e);
       }
 
+      statusMsg.textContent = '📤 Attempting Web Push notification...';
+
+      // 2. Request OTP Code from Backend
       try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/request-push-otp`, {
+        const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: activePhone })
@@ -384,21 +399,12 @@
 
         const data = await res.json();
         if (res.ok) {
+          cachedFallbackCode = data.fallbackCode;
           document.getElementById('phoneStep').style.display = 'none';
           document.getElementById('codeStep').style.display = 'block';
 
-          if (data.pushSent) {
-            statusMsg.style.color = '#16a34a';
-            statusMsg.textContent = '🔔 Push notification sent to your device!';
-          } else if (data.whatsappSent) {
-            statusMsg.style.color = '#16a34a';
-            statusMsg.textContent = '💬 Passcode dispatched via WhatsApp!';
-          } else {
-            statusMsg.style.color = '#d97706';
-            statusMsg.textContent = 'Passcode generated. Check screen fallback below:';
-            document.getElementById('fallbackCodeDisplay').style.display = 'block';
-            document.getElementById('displayCodeText').textContent = data.fallbackCode || '---';
-          }
+          // Start 3-Minute (180s) Push Window Timer
+          startPushTimeoutTimer();
         } else {
           statusMsg.style.color = '#da291c';
           statusMsg.textContent = data.message || 'Failed to generate code.';
@@ -409,6 +415,45 @@
       }
     };
 
+    function startPushTimeoutTimer() {
+      let timeLeft = 180; // 3 minutes window
+      const statusMsg = document.getElementById('gateStatusMsg');
+      const fallbackDisplay = document.getElementById('fallbackCodeDisplay');
+      const displayCodeText = document.getElementById('displayCodeText');
+
+      countdownTimer = setInterval(async () => {
+        timeLeft--;
+        let mins = Math.floor(timeLeft / 60);
+        let secs = timeLeft % 60;
+        let timeFormatted = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+
+        if (timeLeft > 0) {
+          statusMsg.style.color = '#d97706';
+          statusMsg.textContent = `⏳ Waiting for Push notification (${timeFormatted} remaining)...`;
+        } else {
+          clearInterval(countdownTimer);
+          
+          // Push Timer Expired: Reveal On-Screen Code & Trigger WhatsApp Backup
+          statusMsg.style.color = '#0284c7';
+          statusMsg.textContent = 'Push timed out. Revealing on-screen code & sending WhatsApp backup...';
+          
+          fallbackDisplay.style.display = 'block';
+          displayCodeText.textContent = cachedFallbackCode;
+
+          try {
+            await fetch(`${BACKEND_API}/api/auth/fallback-whatsapp`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: activePhone })
+            });
+            statusMsg.textContent = '💬 Passcode sent via WhatsApp & displayed on-screen!';
+          } catch (waErr) {
+            console.error('WhatsApp fallback error:', waErr);
+          }
+        }
+      }, 1000);
+    }
+
     window.verifyPasscode = async function() {
       const code = document.getElementById('gateCodeInput').value.trim();
       if (!activePhone) activePhone = document.getElementById('gatePhoneInput').value.trim();
@@ -418,7 +463,7 @@
       }
 
       try {
-        const res = await fetch(`${API_BASE_URL}/api/auth/verify-push-otp`, {
+        const res = await fetch(`${BACKEND_API}/api/auth/verify-push-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ phone: activePhone, code })
@@ -426,6 +471,7 @@
 
         const data = await res.json();
         if (res.ok) {
+          if (countdownTimer) clearInterval(countdownTimer);
           sessionStorage.setItem('bodaswift_session_token', data.token);
           sessionStorage.setItem('bodaswift_verified_phone', data.phone);
           document.getElementById('pushSecurityGate').style.display = 'none';
