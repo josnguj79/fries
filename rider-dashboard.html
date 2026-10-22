@@ -54,33 +54,15 @@
     
     .btn-action { width: 100%; padding: 0.7rem; background: var(--success); color: white; border: none; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 0.9rem; }
     .badge-delivered { background: #e6f4ea; color: var(--success); padding: 0.3rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: bold; display: inline-block; }
-
-    /* Login Screen */
-    .login-container { max-width: 400px; margin: 4rem auto; padding: 1.5rem; background: white; border-radius: 12px; box-shadow: 0 4px 12px rgba(0,0,0,0.1); text-align: center; }
-    .login-container h2 { color: var(--dark); margin-bottom: 1rem; }
-    .login-container input { width: 100%; padding: 0.8rem; font-size: 1rem; border: 1px solid #ccc; border-radius: 8px; margin-bottom: 1rem; text-align: center; }
-    .login-container button { width: 100%; padding: 0.8rem; background: var(--mc-red); color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 1rem; cursor: pointer; }
-    .error-msg { color: var(--mc-red); font-size: 0.85rem; margin-top: 0.5rem; }
   </style>
 </head>
 <body>
 
-  <!-- LOGIN VIEW (Shown if not logged in) -->
-  <div id="loginView" class="login-container" style="display: none;">
-    <h2>🛵 BodaSwift Rider Login</h2>
-    <p style="font-size: 0.85rem; color: #666; margin-bottom: 1rem;">Enter your registered phone number to access your shift dashboard.</p>
-    <form id="loginForm">
-      <input type="tel" id="loginPhone" placeholder="e.g. 2547XXXXXXXX" required>
-      <button type="submit">ACCESS DASHBOARD</button>
-      <div id="loginError" class="error-msg"></div>
-    </form>
-  </div>
-
-  <!-- DASHBOARD VIEW (Shown when logged in) -->
+  <!-- DASHBOARD VIEW (Unlocked after verification) -->
   <div id="dashboardView" style="display: none;">
     <header class="header">
-      <div class="logo">🛵 BodaSwift</div>
-      <button class="logout-btn" id="logoutBtn">Logout</button>
+      <div class="logo">🛵 BodaSwift Rider</div>
+      <button class="logout-btn" id="logoutBtn">Lock Session 🔒</button>
     </header>
 
     <div class="container">
@@ -108,7 +90,7 @@
       <!-- Pending Tab -->
       <div id="pendingTab" class="tab-content active">
         <div id="pendingOrdersList">
-          <p style="text-align: center; color: #888; margin-top: 2rem;">No active assigned orders. Check WhatsApp for dispatch alerts!</p>
+          <p style="text-align: center; color: #888; margin-top: 2rem;">No active assigned orders.</p>
         </div>
       </div>
 
@@ -121,65 +103,87 @@
     </div>
   </div>
 
+  <!-- ========================================== -->
+  <!-- SECURITY GATEWAY MODAL (WEB PUSH / OTP)   -->
+  <!-- ========================================== -->
+  <div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
+    <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: sans-serif;">
+      
+      <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔐</div>
+      <h3 style="color: #1e293b; font-size: 1.3rem; margin-bottom: 0.5rem;">Rider Access Gate</h3>
+      <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem;">Enter your registered phone number to unlock your shift.</p>
+
+      <!-- Phone Entry Step -->
+      <div id="phoneStep">
+        <input type="tel" id="gatePhoneInput" placeholder="e.g. 254739612301" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1rem; text-align: center; margin-bottom: 1rem;">
+        <button id="requestOtpBtn" onclick="handleOtpRequest()" style="width: 100%; padding: 0.85rem; background: #da291c; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+          Get Security Passcode 🔑
+        </button>
+      </div>
+
+      <!-- Code Verification Step -->
+      <div id="codeStep" style="display: none;">
+        <div id="fallbackCodeDisplay" style="display: none; background: #f1f5f9; border: 2px dashed #0284c7; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;">
+          <span style="font-size: 0.8rem; color: #475569;">Your Passcode (Fallback):</span><br>
+          <strong id="displayCodeText" style="font-size: 1.6rem; color: #0284c7; letter-spacing: 4px;">------</strong>
+        </div>
+
+        <input type="text" id="gateCodeInput" placeholder="••••••" maxlength="6" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1.4rem; text-align: center; letter-spacing: 6px; margin-bottom: 1rem;">
+        <button onclick="verifyPasscode()" style="width: 100%; padding: 0.85rem; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
+          Unlock Shift 🔓
+        </button>
+      </div>
+
+      <div id="gateStatusMsg" style="font-size: 0.8rem; font-weight: 600; margin-top: 1rem; min-height: 1.2rem;"></div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD & AUTH CONTROLLER SCRIPT -->
   <script>
     const API_BASE_URL = 'https://fries-v0l8.onrender.com';
+    let activePhone = '';
 
-    const loginView = document.getElementById('loginView');
     const dashboardView = document.getElementById('dashboardView');
-    const loginForm = document.getElementById('loginForm');
-    const loginPhone = document.getElementById('loginPhone');
-    const loginError = document.getElementById('loginError');
     const logoutBtn = document.getElementById('logoutBtn');
-    
     const riderNameDisplay = document.getElementById('riderNameDisplay');
     const riderPhoneDisplay = document.getElementById('riderPhoneDisplay');
     const statusToggle = document.getElementById('statusToggle');
     const statusText = document.getElementById('statusText');
 
-    // Check active session on load
-    const savedPhone = localStorage.getItem('bodaswift_rider_phone');
-    if (savedPhone) {
-      loadDashboard(savedPhone);
-    } else {
-      loginView.style.display = 'block';
-    }
+    // Check existing session on load
+    document.addEventListener('DOMContentLoaded', () => {
+      const verifiedPhone = sessionStorage.getItem('bodaswift_verified_phone');
+      const sessionToken = sessionStorage.getItem('bodaswift_session_token');
 
-    // Login Form Handler
-    loginForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const phone = loginPhone.value.trim();
-      if (!phone) return;
-
-      loginError.textContent = 'Verifying phone number...';
-
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/riders/status?phone=${phone}`);
-        const data = await res.json();
-
-        if (res.ok) {
-          localStorage.setItem('bodaswift_rider_phone', phone);
-          loadDashboard(phone);
-        } else {
-          loginError.textContent = data.message || 'Phone not registered on BodaSwift.';
+      if (verifiedPhone && sessionToken) {
+        document.getElementById('pushSecurityGate').style.display = 'none';
+        initDashboard(verifiedPhone);
+      } else {
+        const savedPhone = localStorage.getItem('bodaswift_rider_phone');
+        if (savedPhone) {
+          document.getElementById('gatePhoneInput').value = savedPhone;
         }
-      } catch (err) {
-        loginError.textContent = 'Connection error. Try again.';
       }
     });
 
-    // Logout Handler
     logoutBtn.addEventListener('click', () => {
-      localStorage.removeItem('bodaswift_rider_phone');
+      sessionStorage.removeItem('bodaswift_verified_phone');
+      sessionStorage.removeItem('bodaswift_session_token');
       dashboardView.style.display = 'none';
-      loginView.style.display = 'block';
-      loginPhone.value = '';
+      document.getElementById('pushSecurityGate').style.display = 'flex';
+      document.getElementById('phoneStep').style.display = 'block';
+      document.getElementById('codeStep').style.display = 'none';
     });
 
-    // Load Dashboard Data & Orders
-    async function loadDashboard(phone) {
-      loginView.style.display = 'none';
+    function initDashboard(phone) {
+      activePhone = phone;
+      loadDashboardData(phone);
+    }
+
+    async function loadDashboardData(phone) {
       dashboardView.style.display = 'block';
       riderPhoneDisplay.textContent = phone;
+      localStorage.setItem('bodaswift_rider_phone', phone);
 
       // 1. Fetch Rider Status & Profile
       try {
@@ -210,94 +214,90 @@
       }
     }
 
-    // Render Helper with Interactive Navigation Links
-function renderOrders(orders, containerId, isPending) {
-  const container = document.getElementById(containerId);
-  if (!orders || orders.length === 0) {
-    container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isPending ? 'active assigned' : 'completed'} orders found.</p>`;
-    return;
-  }
+    function renderOrders(orders, containerId, isPending) {
+      const container = document.getElementById(containerId);
+      if (!orders || orders.length === 0) {
+        container.innerHTML = `<p style="text-align: center; color: #888; margin-top: 2rem;">No ${isPending ? 'active assigned' : 'completed'} orders found.</p>`;
+        return;
+      }
 
-  container.innerHTML = orders.map(order => {
-    const itemsSummary = Array.isArray(order.items) 
-      ? order.items.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ') 
-      : 'Order details';
+      container.innerHTML = orders.map(order => {
+        const itemsSummary = Array.isArray(order.items) 
+          ? order.items.map(i => `${i.qty || 1}x ${i.name || 'Item'}`).join(', ') 
+          : 'Order details';
 
-    // Format phones and map links
-    const cleanCustomerPhone = String(order.customerPhone || '').replace(/\D/g, '');
-    const whatsappLink = `https://wa.me/${cleanCustomerPhone}?text=Hello,%20this%20is%20your%20BodaSwift%20rider%20with%20your%20Kimana%20Fries%20order%20(${order.id})`;
-    const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.deliveryLocation || '')}`;
+        const cleanCustomerPhone = String(order.customerPhone || '').replace(/\D/g, '');
+        const whatsappLink = `https://wa.me/${cleanCustomerPhone}?text=Hello,%20this%20is%20your%20BodaSwift%20rider%20with%20your%20Kimana%20Fries%20order%20(${order.id})`;
+        const mapsLink = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(order.deliveryLocation || '')}`;
 
-    return `
-      <div class="order-card ${!isPending ? 'delivered' : ''}" id="card-${order.id}">
-        <div class="order-header">
-          <span>🆔 #${order.id}</span>
-          <span>KES ${order.totalAmount}</span>
-        </div>
-        <div class="order-details">
-          <p><strong>📍 Location:</strong> <a href="${mapsLink}" target="_blank" style="color: #007bff; text-decoration: underline;">${order.deliveryLocation} 🗺️</a></p>
-          <p><strong>📞 Customer:</strong> <a href="${whatsappLink}" target="_blank" style="color: #25D366; font-weight: bold; text-decoration: none;">${order.customerPhone} 💬</a></p>
-          <p><strong>🍟 Items:</strong> ${itemsSummary}</p>
-        </div>
-        ${isPending ? `
-          <button class="btn-action" id="btn-${order.id}" onclick="markDelivered('${order.id}')">MARK AS DELIVERED ✅</button>
-        ` : `
-          <span class="badge-delivered">DELIVERED</span>
-        `}
-      </div>
-    `;
-  }).join('');
-}
-    // Quick Deliver Action with Visual Click Indication
-async function markDelivered(orderId) {
-  const phone = localStorage.getItem('bodaswift_rider_phone');
-  if (!phone || !orderId) return;
+        return `
+          <div class="order-card ${!isPending ? 'delivered' : ''}" id="card-${order.id}">
+            <div class="order-header">
+              <span>🆔 #${order.id}</span>
+              <span>KES ${order.totalAmount}</span>
+            </div>
+            <div class="order-details">
+              <p><strong>📍 Location:</strong> <a href="${mapsLink}" target="_blank" style="color: #007bff; text-decoration: underline;">${order.deliveryLocation} 🗺️</a></p>
+              <p><strong>📞 Customer:</strong> <a href="${whatsappLink}" target="_blank" style="color: #25D366; font-weight: bold; text-decoration: none;">${order.customerPhone} 💬</a></p>
+              <p><strong>🍟 Items:</strong> ${itemsSummary}</p>
+            </div>
+            ${isPending ? `
+              <button class="btn-action" id="btn-${order.id}" onclick="markDelivered('${order.id}')">MARK AS DELIVERED ✅</button>
+            ` : `
+              <span class="badge-delivered">DELIVERED</span>
+            `}
+          </div>
+        `;
+      }).join('');
+    }
 
-  const btn = document.getElementById(`btn-${orderId}`);
-  if (btn) {
-    btn.disabled = true;
-    btn.textContent = 'Updating status... ⏳';
-    btn.style.opacity = '0.7';
-  }
+    async function markDelivered(orderId) {
+      if (!activePhone || !orderId) return;
 
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/orders/deliver`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ orderId, riderPhone: phone })
-    });
-
-    const data = await res.json();
-    if (res.ok) {
-      alert(`✅ Order ${orderId} marked as DELIVERED!`);
-      loadDashboard(phone); // Refresh list
-    } else {
-      alert(data.message || 'Failed to update delivery status.');
+      const btn = document.getElementById(`btn-${orderId}`);
       if (btn) {
-        btn.disabled = false;
-        btn.textContent = 'MARK AS DELIVERED ✅';
-        btn.style.opacity = '1';
+        btn.disabled = true;
+        btn.textContent = 'Updating status... ⏳';
+        btn.style.opacity = '0.7';
+      }
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/orders/deliver`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ orderId, riderPhone: activePhone })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert(`✅ Order ${orderId} marked as DELIVERED!`);
+          loadDashboardData(activePhone);
+        } else {
+          alert(data.message || 'Failed to update delivery status.');
+          if (btn) {
+            btn.disabled = false;
+            btn.textContent = 'MARK AS DELIVERED ✅';
+            btn.style.opacity = '1';
+          }
+        }
+      } catch (err) {
+        alert('Network error. Please try again.');
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'MARK AS DELIVERED ✅';
+          btn.style.opacity = '1';
+        }
       }
     }
-  } catch (err) {
-    alert('Network error. Please try again.');
-    if (btn) {
-      btn.disabled = false;
-      btn.textContent = 'MARK AS DELIVERED ✅';
-      btn.style.opacity = '1';
-    }
-  }
-}
-    // Status Toggle Handler
+
     statusToggle.addEventListener('change', async () => {
-      const phone = localStorage.getItem('bodaswift_rider_phone');
       const isAvailable = statusToggle.checked ? 1 : 0;
 
       try {
         const res = await fetch(`${API_BASE_URL}/api/riders/toggle-status`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, isAvailable })
+          body: JSON.stringify({ phone: activePhone, isAvailable })
         });
         const data = await res.json();
 
@@ -305,14 +305,13 @@ async function markDelivered(orderId) {
           statusText.textContent = isAvailable ? 'ONLINE' : 'OFFLINE';
           statusText.style.color = isAvailable ? 'var(--success)' : '#888';
         } else {
-          statusToggle.checked = !isAvailable; // revert
+          statusToggle.checked = !isAvailable;
         }
       } catch (err) {
-        statusToggle.checked = !isAvailable; // revert
+        statusToggle.checked = !isAvailable;
       }
     });
 
-    // Tab Switcher
     function switchTab(tab) {
       document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
       document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
@@ -326,273 +325,118 @@ async function markDelivered(orderId) {
       }
     }
   </script>
-  <!-- ========================================== -->
-<!-- WEB PUSH OTP SECURITY GATEWAY MODAL -->
-<!-- ========================================== -->
-<div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
-  <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;">
-    
-    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔔</div>
-    <h3 style="color: #1e293b; font-size: 1.3rem; margin-bottom: 0.5rem;">Web Push Verification</h3>
-    <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem; line-height: 1.4;">
-      Enter your phone number to receive a 1-click Web Push security passcode on your device.
-    </p>
 
-    <!-- STEP 1: Phone Request -->
-    <div id="pushPhoneStep">
-      <input type="tel" id="gatePhoneInput" placeholder="e.g. +254712345678" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1rem; text-align: center; margin-bottom: 1rem; outline: none;">
-      <button id="requestPushBtn" onclick="requestWebPushOtp()" style="width: 100%; padding: 0.85rem; background: #da291c; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s;">
-        Send Web Push OTP 📲
-      </button>
-    </div>
+  <!-- FIREBASE WEB PUSH AUTH SCRIPT -->
+  <script type="module">
+    import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
+    import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
 
-    <!-- STEP 2: Code Entry -->
-    <div id="pushCodeStep" style="display: none;">
-      <input type="text" id="gateCodeInput" placeholder="••••••" maxlength="6" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1.4rem; text-align: center; letter-spacing: 6px; margin-bottom: 1rem; outline: none;">
-      <button id="verifyPushBtn" onclick="verifyWebPushOtp()" style="width: 100%; padding: 0.85rem; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s;">
-        Verify & Unlock Portal 🔓
-      </button>
-    </div>
+    const firebaseConfig = {
+      apiKey: "YOUR_FIREBASE_API_KEY",
+      authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID",
+      messagingSenderId: "YOUR_SENDER_ID",
+      appId: "YOUR_APP_ID"
+    };
 
-    <div id="gateStatusMsg" style="font-size: 0.8rem; font-weight: 600; margin-top: 1rem; min-height: 1.2rem;"></div>
-  </div>
-</div>
+    const VAPID_KEY = "YOUR_FIREBASE_VAPID_KEY";
 
-<script>
-  const BACKEND_API = 'https://fries-v0l8.onrender.com';
+    const app = initializeApp(firebaseConfig);
+    const messaging = getMessaging(app);
 
-  // Check existing session on load
-  document.addEventListener('DOMContentLoaded', () => {
-    const verifiedPhone = sessionStorage.getItem('bodaswift_verified_phone');
-    const sessionToken = sessionStorage.getItem('bodaswift_session_token');
+    window.handleOtpRequest = async function() {
+      const phoneInput = document.getElementById('gatePhoneInput');
+      const statusMsg = document.getElementById('gateStatusMsg');
+      activePhone = phoneInput.value.trim();
 
-    if (verifiedPhone && sessionToken) {
-      document.getElementById('pushSecurityGate').style.display = 'none';
-      if (typeof initDashboard === 'function') initDashboard(verifiedPhone);
-    } else {
-      // Pre-fill phone from localStorage if available
-      const savedPhone = localStorage.getItem('kimana_customer_phone');
-      if (savedPhone) {
-        document.getElementById('gatePhoneInput').value = savedPhone;
+      if (!activePhone) return alert('Please enter your phone number');
+
+      statusMsg.style.color = '#0284c7';
+      statusMsg.textContent = 'Requesting permission & generating passcode...';
+
+      try {
+        const permission = await Notification.requestPermission();
+        if (permission === 'granted') {
+          const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
+          const fcmToken = await getToken(messaging, { 
+            vapidKey: VAPID_KEY,
+            serviceWorkerRegistration: registration 
+          });
+
+          if (fcmToken) {
+            await fetch(`${API_BASE_URL}/api/notifications/register-token`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ phone: activePhone, token: fcmToken, role: 'rider' })
+            });
+          }
+        }
+      } catch (e) {
+        console.warn('Push registration error/skipped:', e);
       }
-    }
-  });
 
-  /**
-   * Request Web Push OTP
-   */
-  async function requestWebPushOtp() {
-    const phoneInput = document.getElementById('gatePhoneInput');
-    const statusMsg = document.getElementById('gateStatusMsg');
-    const phone = phoneInput.value.trim();
-
-    if (!phone) {
-      statusMsg.style.color = '#da291c';
-      statusMsg.textContent = 'Please enter a valid phone number.';
-      return;
-    }
-
-    statusMsg.style.color = '#0284c7';
-    statusMsg.textContent = 'Dispatching Web Push notification...';
-
-    try {
-      const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        statusMsg.style.color = '#16a34a';
-        statusMsg.textContent = '🔔 Push sent! Check your notifications for code.';
-        document.getElementById('pushPhoneStep').style.display = 'none';
-        document.getElementById('pushCodeStep').style.display = 'block';
-      } else {
-        statusMsg.style.color = '#da291c';
-        statusMsg.textContent = data.message || 'Failed to dispatch push notification.';
-      }
-    } catch (err) {
-      console.error(err);
-      statusMsg.style.color = '#da291c';
-      statusMsg.textContent = 'Server connection error.';
-    }
-  }
-
-  /**
-   * Verify Entered Passcode
-   */
-  async function verifyWebPushOtp() {
-    const phone = document.getElementById('gatePhoneInput').value.trim();
-    const code = document.getElementById('gateCodeInput').value.trim();
-    const statusMsg = document.getElementById('gateStatusMsg');
-
-    if (code.length !== 6) {
-      statusMsg.style.color = '#da291c';
-      statusMsg.textContent = 'Please enter the 6-digit code.';
-      return;
-    }
-
-    statusMsg.style.color = '#0284c7';
-    statusMsg.textContent = 'Verifying passcode...';
-
-    try {
-      const res = await fetch(`${BACKEND_API}/api/auth/verify-push-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone, code })
-      });
-
-      const data = await res.json();
-
-      if (res.ok) {
-        sessionStorage.setItem('bodaswift_session_token', data.token);
-        sessionStorage.setItem('bodaswift_verified_phone', data.phone);
-
-        statusMsg.style.color = '#16a34a';
-        statusMsg.textContent = '🔓 Access granted! Loading dashboard...';
-
-        setTimeout(() => {
-          document.getElementById('pushSecurityGate').style.display = 'none';
-          if (typeof initDashboard === 'function') initDashboard(data.phone);
-        }, 800);
-
-      } else {
-        statusMsg.style.color = '#da291c';
-        statusMsg.textContent = data.message || 'Invalid passcode.';
-      }
-    } catch (err) {
-      console.error(err);
-      statusMsg.style.color = '#da291c';
-      statusMsg.textContent = 'Network error verifying passcode.';
-    }
-  }
-</script>
-  <div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
-  <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: sans-serif;">
-    
-    <div style="font-size: 2.5rem; margin-bottom: 0.5rem;">🔐</div>
-    <h3 style="color: #1e293b; font-size: 1.3rem; margin-bottom: 0.5rem;">BodaSwift Access Gate</h3>
-    <p style="color: #64748b; font-size: 0.85rem; margin-bottom: 1.5rem;">Enter your phone number to generate an access passcode.</p>
-
-    <!-- Phone Entry Step -->
-    <div id="phoneStep">
-      <input type="tel" id="gatePhoneInput" placeholder="e.g. 254739612301" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1rem; text-align: center; margin-bottom: 1rem;">
-      <button id="requestOtpBtn" onclick="handleOtpRequest()" style="width: 100%; padding: 0.85rem; background: #da291c; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
-        Get Security Passcode 🔑
-      </button>
-    </div>
-
-    <!-- Code Verification Step -->
-    <div id="codeStep" style="display: none;">
-      <div id="fallbackCodeDisplay" style="display: none; background: #f1f5f9; border: 2px dashed #0284c7; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;">
-        <span style="font-size: 0.8rem; color: #475569;">Your Passcode:</span><br>
-        <strong id="displayCodeText" style="font-size: 1.6rem; color: #0284c7; letter-spacing: 4px;">------</strong>
-      </div>
-
-      <input type="text" id="gateCodeInput" placeholder="••••••" maxlength="6" style="width: 100%; padding: 0.8rem; border: 1.5px solid #cbd5e1; border-radius: 8px; font-size: 1.4rem; text-align: center; letter-spacing: 6px; margin-bottom: 1rem;">
-      <button onclick="verifyPasscode()" style="width: 100%; padding: 0.85rem; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; cursor: pointer;">
-        Unlock Portal 🔓
-      </button>
-    </div>
-
-    <div id="gateStatusMsg" style="font-size: 0.8rem; font-weight: 600; margin-top: 1rem; min-height: 1.2rem;"></div>
-  </div>
-</div>
-
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
-  import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
-
-  const firebaseConfig = {
-    apiKey: "YOUR_FIREBASE_API_KEY",
-    authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-    projectId: "YOUR_PROJECT_ID",
-    messagingSenderId: "YOUR_SENDER_ID",
-    appId: "YOUR_APP_ID"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const messaging = getMessaging(app);
-  const BACKEND_API = 'https://fries-v0l8.onrender.com';
-
-  window.handleOtpRequest = async function() {
-    const phone = document.getElementById('gatePhoneInput').value.trim();
-    const statusMsg = document.getElementById('gateStatusMsg');
-    if (!phone) return alert('Please enter your phone number');
-
-    statusMsg.style.color = '#0284c7';
-    statusMsg.textContent = 'Requesting permission & generating passcode...';
-
-    // 1. Request Browser Permission on User Click
-    let fcmToken = null;
-    try {
-      const permission = await Notification.requestPermission();
-      if (permission === 'granted') {
-        fcmToken = await getToken(messaging, { vapidKey: 'YOUR_FIREBASE_VAPID_KEY' });
-        
-        // Register token with backend
-        await fetch(`${BACKEND_API}/api/notifications/register-token`, {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/request-push-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone, token: fcmToken, role: 'customer' })
+          body: JSON.stringify({ phone: activePhone })
         });
-      }
-    } catch (e) {
-      console.warn('Push permission skipped or blocked:', e);
-    }
 
-    // 2. Request OTP Code from Backend
-    try {
-      const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ phone })
-      });
+        const data = await res.json();
+        if (res.ok) {
+          document.getElementById('phoneStep').style.display = 'none';
+          document.getElementById('codeStep').style.display = 'block';
 
-      const data = await res.json();
-      if (res.ok) {
-        document.getElementById('phoneStep').style.display = 'none';
-        document.getElementById('codeStep').style.display = 'block';
-
-        // If push is active, alert user; otherwise show on-screen fallback
-        if (fcmToken) {
-          statusMsg.style.color = '#16a34a';
-          statusMsg.textContent = '🔔 Push notification sent to your device!';
+          if (data.pushSent) {
+            statusMsg.style.color = '#16a34a';
+            statusMsg.textContent = '🔔 Push notification sent to your device!';
+          } else if (data.whatsappSent) {
+            statusMsg.style.color = '#16a34a';
+            statusMsg.textContent = '💬 Passcode dispatched via WhatsApp!';
+          } else {
+            statusMsg.style.color = '#d97706';
+            statusMsg.textContent = 'Passcode generated. Check screen fallback below:';
+            document.getElementById('fallbackCodeDisplay').style.display = 'block';
+            document.getElementById('displayCodeText').textContent = data.fallbackCode || '---';
+          }
         } else {
-          statusMsg.style.color = '#d97706';
-          statusMsg.textContent = 'Notifications disabled. Use the code displayed below:';
-          document.getElementById('fallbackCodeDisplay').style.display = 'block';
-          document.getElementById('displayCodeText').textContent = data.fallbackCode || 'Check Server';
+          statusMsg.style.color = '#da291c';
+          statusMsg.textContent = data.message || 'Failed to generate code.';
         }
+      } catch (err) {
+        statusMsg.style.color = '#da291c';
+        statusMsg.textContent = 'Server connection error.';
       }
-    } catch (err) {
-      statusMsg.style.color = '#da291c';
-      statusMsg.textContent = 'Server error requesting passcode.';
-    }
-  };
+    };
 
-  window.verifyPasscode = async function() {
-    const phone = document.getElementById('gatePhoneInput').value.trim();
-    const code = document.getElementById('gateCodeInput').value.trim();
-    
-    const res = await fetch(`${BACKEND_API}/api/auth/verify-push-otp`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, code })
-    });
+    window.verifyPasscode = async function() {
+      const code = document.getElementById('gateCodeInput').value.trim();
+      if (!activePhone) activePhone = document.getElementById('gatePhoneInput').value.trim();
 
-    const data = await res.json();
-    if (res.ok) {
-      sessionStorage.setItem('bodaswift_session_token', data.token);
-      sessionStorage.setItem('bodaswift_verified_phone', data.phone);
-      document.getElementById('pushSecurityGate').style.display = 'none';
-      if (typeof initDashboard === 'function') initDashboard(data.phone);
-    } else {
-      alert(data.message || 'Invalid passcode.');
-    }
-  };
-</script>
+      if (code.length !== 6) {
+        return alert('Please enter the 6-digit code.');
+      }
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/auth/verify-push-otp`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone: activePhone, code })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          sessionStorage.setItem('bodaswift_session_token', data.token);
+          sessionStorage.setItem('bodaswift_verified_phone', data.phone);
+          document.getElementById('pushSecurityGate').style.display = 'none';
+          initDashboard(data.phone);
+        } else {
+          alert(data.message || 'Invalid passcode.');
+        }
+      } catch (err) {
+        alert('Network error verifying passcode.');
+      }
+    };
+  </script>
 </body>
 </html>
