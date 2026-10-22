@@ -1072,19 +1072,27 @@ app.post('/api/auth/verify-push-otp', async (req, res) => {
 /**
  * 5. Dynamic Client Config Endpoint (Loads keys from Render environment variables)
  */
+/**
+ * Endpoint: GET /api/config/firebase
+ * Purpose: Exposes public Firebase configuration keys safely with server-side validation.
+ */
 app.get('/api/config/firebase', (req, res) => {
   try {
-    res.status(200).json({
-      apiKey: process.env.FIREBASE_API_KEY,
-      authDomain: process.env.FIREBASE_AUTH_DOMAIN,
-      projectId: process.env.FIREBASE_PROJECT_ID,
-      storageBucket: process.env.FIREBASE_STORAGE_BUCKET,
-      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID,
-      appId: process.env.FIREBASE_APP_ID,
-      vapidKey: process.env.FIREBASE_VAPID_KEY
-    });
+    const config = {
+      apiKey: process.env.FIREBASE_API_KEY || '',
+      authDomain: process.env.FIREBASE_AUTH_DOMAIN || '',
+      projectId: process.env.FIREBASE_PROJECT_ID || '',
+      storageBucket: process.env.FIREBASE_STORAGE_BUCKET || '',
+      messagingSenderId: process.env.FIREBASE_MESSAGING_SENDER_ID || '',
+      appId: process.env.FIREBASE_APP_ID || '',
+      vapidKey: process.env.FIREBASE_VAPID_KEY || ''
+    };
+
+    console.log('[Config Check] Serving Firebase Client Config. API Key Present:', !!config.apiKey);
+    return res.status(200).json(config);
   } catch (error) {
-    res.status(500).json({ success: false, message: 'Failed to load configuration.' });
+    console.error('[Config Error]:', error);
+    return res.status(500).json({ success: false, message: 'Failed to load client configuration.' });
   }
 });
 // ==========================================
