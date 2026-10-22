@@ -4,7 +4,7 @@ importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-comp
 
 const BACKEND_API = 'https://fries-v0l8.onrender.com';
 
-// Fetch Firebase Configuration dynamically from Render backend
+// Fetch Firebase Configuration dynamically from Render backend on SW startup
 fetch(`${BACKEND_API}/api/config/firebase`)
   .then((response) => response.json())
   .then((config) => {
@@ -13,7 +13,6 @@ fetch(`${BACKEND_API}/api/config/firebase`)
       return;
     }
 
-    // Initialize Firebase in the Service Worker using Render environment values
     firebase.initializeApp({
       apiKey: config.apiKey,
       authDomain: config.authDomain,
@@ -25,16 +24,16 @@ fetch(`${BACKEND_API}/api/config/firebase`)
 
     const messaging = firebase.messaging();
 
-    // Background push notification handler
+    // Handle background push messages
     messaging.onBackgroundMessage((payload) => {
       console.log('[firebase-messaging-sw.js] Received background message: ', payload);
 
-      const notificationTitle = payload?.notification?.title || '🔐 BodaSwift Security Passcode';
+      const notificationTitle = payload?.notification?.title || '🔐 BodaSwift Access Passcode';
       const notificationOptions = {
         body: payload?.notification?.body || 'Your verification code is ready.',
-        icon: './icons/icon-192.png',
+        icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
         data: {
-          url: payload?.data?.url || './customer-dashboard.html'
+          url: payload?.data?.url || './index.html'
         }
       };
 
@@ -42,13 +41,13 @@ fetch(`${BACKEND_API}/api/config/firebase`)
     });
   })
   .catch((err) => {
-    console.error('[firebase-messaging-sw.js] Failed to load Firebase config from server:', err);
+    console.error('[firebase-messaging-sw.js] Failed to initialize Firebase from server config:', err);
   });
 
-// Handle notification click event (opens/focuses dashboard)
+// Handle notification click event (opens dashboard)
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-  const targetUrl = event.notification.data?.url || './customer-dashboard.html';
+  const targetUrl = event.notification.data?.url || './rider-dashboard.html';
 
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
