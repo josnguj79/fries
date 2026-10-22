@@ -935,7 +935,6 @@ app.post('/api/notifications/register-token', async (req, res) => {
 
 /**
  * Helper: Send Dual-Payload Push Notification to all devices registered under a phone number
- * Includes both 'notification' (for OS background display) and 'data' (for Service Worker handling).
  */
 async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode = null) {
   try {
@@ -956,19 +955,16 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode
       try {
         await admin.messaging().send({
           token: row.token,
-          // Standard OS display notification
           notification: { 
             title: title, 
             body: body 
           },
-          // Custom data payload passed directly to firebase-messaging-sw.js
           data: { 
             title: String(title),
             body: String(body),
             otpCode: otpCode ? String(otpCode) : '',
             url: targetUrl || './index.html' 
           },
-          // Platform-specific WebPush tuning
           webpush: {
             headers: {
               Urgency: 'high'
@@ -977,13 +973,12 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode
               title: title,
               body: body,
               icon: 'https://bodaswift.onrender.com/icons/icon-192.png',
-              requireInteraction: true // Keeps notification visible until user acts
+              requireInteraction: true
             }
           }
         });
         successCount++;
       } catch (sendErr) {
-        // Auto-purge dead/stale tokens from Turso DB
         if (sendErr.code === 'messaging/registration-token-not-registered' || sendErr.errorInfo?.code === 'messaging/registration-token-not-registered') {
           console.warn(`[FCM Purge] Removing dead token for phone ${cleanPhone}: ${row.token.substring(0, 10)}...`);
           await turso.execute({
@@ -1023,13 +1018,13 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
 
     pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
 
-    // Send dual-payload Web Push notification with OTP code
+    // Send push notification with explicit otpCode
     const pushSent = await sendPushNotificationToUser(
       cleanPhone,
-      '🔐 BodaSwift Security Passcode',
-      `Your portal unlock code is: ${otpCode}`,
+      '🔐 BodaSwift Access Passcode',
+      `Your verification code is: ${otpCode}`,
       './customer-dashboard.html',
-      otpCode // Pass code explicitly
+      otpCode
     );
 
     console.log(`[OTP Generated] Phone: ${cleanPhone} | Code: ${otpCode} | Push Attempted: ${pushSent}`);
@@ -1037,7 +1032,7 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
     return res.status(200).json({
       success: true,
       pushSent: pushSent,
-      fallbackCode: otpCode // Sent for on-screen 3-minute fallback
+      fallbackCode: otpCode
     });
   } catch (error) {
     console.error('[Request OTP Error]:', error);
