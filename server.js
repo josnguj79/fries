@@ -1125,6 +1125,94 @@ app.get('/api/config/firebase', (req, res) => {
     return res.status(500).json({ success: false, message: 'Failed to load client configuration.' });
   }
 });
+
+// In-memory or Turso-backed store for active rider coordinates
+const activeRiderLocations = new Map();
+
+/**
+ * 1. POST /api/rider/location
+ * Updates live coordinates for an active delivery order
+ */
+app.post('/api/rider/location', async (req, res) => {
+  try {
+    const { orderId, riderPhone, lat, lng, heading, speed } = req.body;
+    if (!orderId || !lat || !lng) {
+      return res.status(400).json({ success: false, message: 'Missing orderId or coordinates.' });
+    }
+
+    const locationData = {
+      orderId,
+      riderPhone,
+      lat: parseFloat(lat),
+      lng: parseFloat(lng),
+      heading: heading || 0,
+      speed: speed || 0,
+      updatedAt: Date.now()
+    };
+
+    activeRiderLocations.set(String(orderId), locationData);
+
+    return res.status(200).json({ success: true, message: 'Location updated.' });
+  } catch (err) {
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+/**
+ * 2. GET /api/customer/track-order/:orderId
+ * Fetches current rider location and status for customer map view
+ */
+app.get('/api/customer/track-order/:orderId', (req, res) => {
+  const { orderId } = req.params;
+  const location = activeRiderLocations.get(String(orderId));
+
+  if (!location) {
+    return res.status(200).json({
+      success: true,
+      trackingActive: false,
+      message: 'Rider location not yet available.'
+    });
+  }
+
+  return res.status(200).json({
+    success: true,
+    trackingActive: true,
+    location
+  });
+});
+
+/**
+ * 3. POST /api/customer/rate-rider
+ * Saves 5-star rating, review tags, and comments
+ */
+app.post('/api/customer/rate-rider', async (req, res) => {
+  try {
+    const { orderId, riderPhone, rating, tags, comment } = req.body;
+    if (!orderId || !rating) {
+      return res.status(400).json({ success: false, message: 'Order ID and rating required.' });
+    }
+
+    await turso.execute({
+      sql: `INSERT INTO rider_ratings (order_id, rider_phone, rating, tags, comment, created_at)
+            VALUES (?, ?, ?, ?, ?, ?)`,
+      args: [
+        String(orderId),
+        riderPhone ? String(riderPhone) : 'unassigned',
+        parseInt(rating, 10),
+        JSON.stringify(tags || []),
+        comment || '',
+        Date.now()
+      ]
+    });
+
+    console.log(`[Rider Rating] Order: ${orderId} | Rating: ${rating}⭐`);
+    return res.status(200).json({ success: true, message: 'Thank you for your rating!' });
+  } catch (err) {
+    console.error('[Rate Rider Error]:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
 // ==========================================
 // SERVER INITIALIZATION
 // ==========================================
