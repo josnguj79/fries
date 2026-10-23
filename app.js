@@ -237,7 +237,35 @@ document.addEventListener('DOMContentLoaded', () => {
   if (menuOverlay) menuOverlay.addEventListener('click', closeMenu);
 });
 
+const slider = document.getElementById('promoSlider');
+const dots = document.querySelectorAll('.slider-dots .dot');
 
+// Update active dot on manual scroll/swipe
+slider.addEventListener('scroll', () => {
+  const cardWidth = slider.querySelector('.slide-card').offsetWidth + 16; // card width + gap
+  const index = Math.round(slider.scrollLeft / cardWidth);
+  
+  dots.forEach((dot, i) => {
+    dot.classList.toggle('active', i === index);
+  });
+});
+
+// Click dot to jump to slide
+function currentSlide(index) {
+  const cardWidth = slider.querySelector('.slide-card').offsetWidth + 16;
+  slider.scrollTo({
+    left: cardWidth * index,
+    behavior: 'smooth'
+  });
+}
+
+// Optional helper to jump back to menu when clicking "Order Now"
+function scrollToMenu() {
+  const menuElement = document.getElementById('menuSection') || document.querySelector('.menu-container');
+  if (menuElement) {
+    menuElement.scrollIntoView({ behavior: 'smooth' });
+  }
+}
 // ==========================================
 // INITIALIZATION
 // ==========================================
