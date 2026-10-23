@@ -2,7 +2,7 @@
 import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
 import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
 
-// REPLACE THESE WITH YOUR EXACT FIREBASE CONSOLE WEB APP CONFIG
+// FIREBASE CONSOLE WEB APP CONFIG
 const firebaseConfig = {
   apiKey: "AIzaSyByYP8HHxy1LSV6nrG7kBAwMjFh6IuYMC4",
   authDomain: "bodaswift-auth.firebaseapp.com",
@@ -12,7 +12,7 @@ const firebaseConfig = {
   appId: "1:973632392043:web:3d7439b12e522e04a31a2e",
 };
 
-// REPLACE THIS WITH YOUR PAIR KEY FROM FIREBASE CONSOLE > PROJECT SETTINGS > CLOUD MESSAGING > WEB PUSH CERTIFICATES
+// PAIR KEY FROM FIREBASE CONSOLE
 const VAPID_KEY = "BFgaCO0LeZ3n8HL3083u_VgflsH3ib6F5f4OEBQoF3LetnY_fWVVcPtlBrjHW-ioycw1TV2i8VIFNIXuHg1-thY";
 
 const app = initializeApp(firebaseConfig);
@@ -78,11 +78,25 @@ export async function registerPushNotifications(userPhone, role = 'customer') {
 onMessage(messaging, (payload) => {
   console.log('[FCM Foreground Alert]:', payload);
   
-  const title = payload?.notification?.title || '🍔 Kimana Fries Alert';
-  const body = payload?.notification?.body || 'You have a new update!';
+  // Extract title, body, and OTP code from both notification and data payloads
+  const title = 
+    payload?.notification?.title || 
+    payload?.data?.title || 
+    '🔐 BodaSwift Access Passcode';
 
-  // Show standard in-app alert or custom banner
-  alert(`🔔 ${title}\n\n${body}`);
+  const body = 
+    payload?.notification?.body || 
+    payload?.data?.body || 
+    (payload?.data?.otpCode ? `Your verification code is: ${payload.data.otpCode}` : 'Your verification code is ready.');
+
+  // Automatically populate the input field on the page if present
+  const otpInput = document.getElementById('gateOtpInput') || document.getElementById('otpInput');
+  if (otpInput && payload?.data?.otpCode) {
+    otpInput.value = payload.data.otpCode;
+  }
+
+  // Display dedicated BodaSwift OTP notification banner / alert
+  alert(`🔐 ${title}\n\n${body}`);
 });
 
 // Expose globally so inline non-module scripts can call it directly
