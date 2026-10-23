@@ -4,11 +4,12 @@ import { getMessaging, getToken, onMessage } from "https://www.gstatic.com/fireb
 
 // REPLACE THESE WITH YOUR EXACT FIREBASE CONSOLE WEB APP CONFIG
 const firebaseConfig = {
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyByYP8HHxy1LSV6nrG7kBAwMjFh6IuYMC4",
+  authDomain: "bodaswift-auth.firebaseapp.com",
+  projectId: "bodaswift-auth",
+  storageBucket: "bodaswift-auth.firebasestorage.app",
+  messagingSenderId: "973632392043",
+  appId: "1:973632392043:web:3d7439b12e522e04a31a2e",
 };
 
 // REPLACE THIS WITH YOUR PAIR KEY FROM FIREBASE CONSOLE > PROJECT SETTINGS > CLOUD MESSAGING > WEB PUSH CERTIFICATES
