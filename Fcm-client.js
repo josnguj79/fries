@@ -13,7 +13,7 @@ const firebaseConfig = {
 };
 
 // REPLACE THIS WITH YOUR PAIR KEY FROM FIREBASE CONSOLE > PROJECT SETTINGS > CLOUD MESSAGING > WEB PUSH CERTIFICATES
-const VAPID_KEY = "YOUR_FIREBASE_VAPID_KEY_FROM_PROJECT_SETTINGS";
+const VAPID_KEY = "BFgaCO0LeZ3n8HL3083u_VgflsH3ib6F5f4OEBQoF3LetnY_fWVVcPtlBrjHW-ioycw1TV2i8VIFNIXuHg1-thY";
 
 const app = initializeApp(firebaseConfig);
 const messaging = getMessaging(app);
