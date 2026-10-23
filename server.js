@@ -1212,7 +1212,43 @@ app.post('/api/customer/rate-rider', async (req, res) => {
     return res.status(500).json({ success: false, message: err.message });
   }
 });
+/**
+ * GET /api/rider/ratings/:riderPhone
+ * Fetches average rating and review history for a rider
+ */
+app.get('/api/rider/ratings/:riderPhone', async (req, res) => {
+  try {
+    const { riderPhone } = req.params;
+    const cleanPhone = String(riderPhone).trim();
 
+    const result = await turso.execute({
+      sql: `SELECT AVG(rating) as avg_rating, COUNT(*) as total_reviews FROM rider_ratings WHERE rider_phone = ?`,
+      args: [cleanPhone]
+    });
+
+    const reviewsResult = await turso.execute({
+      sql: `SELECT rating, tags, comment, created_at FROM rider_ratings WHERE rider_phone = ? ORDER BY created_at DESC LIMIT 10`,
+      args: [cleanPhone]
+    });
+
+    const stats = result.rows[0] || { avg_rating: 5.0, total_reviews: 0 };
+
+    return res.status(200).json({
+      success: true,
+      averageRating: stats.avg_rating ? Number(stats.avg_rating).toFixed(1) : '5.0',
+      totalReviews: stats.total_reviews || 0,
+      reviews: reviewsResult.rows.map(r => ({
+        rating: r.rating,
+        tags: JSON.parse(r.tags || '[]'),
+        comment: r.comment,
+        date: new Date(r.created_at).toLocaleDateString()
+      }))
+    });
+  } catch (err) {
+    console.error('[Fetch Ratings Error]:', err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
 // ==========================================
 // SERVER INITIALIZATION
 // ==========================================
