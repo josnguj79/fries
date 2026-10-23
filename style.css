@@ -17,7 +17,188 @@
     color: #333; 
     overflow-x: hidden;
   }
-  
+  .boda-slider-wrapper {
+  width: 100%;
+  max-width: 600px;
+  margin: 24px auto;
+  padding: 0 16px;
+  box-sizing: border-box;
+}
+
+.slider-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.slider-header h3 {
+  font-size: 1.1rem;
+  font-weight: 700;
+  color: #1e293b;
+  margin: 0;
+}
+
+.slider-swipe-hint {
+  font-size: 0.8rem;
+  color: #64748b;
+}
+
+/* Scroll Snap Container */
+.promo-slider {
+  display: flex;
+  gap: 16px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  padding-bottom: 8px;
+  scrollbar-width: none; /* Hide scrollbar for clean look */
+}
+
+.promo-slider::-webkit-scrollbar {
+  display: none;
+}
+
+/* Individual Slide Card */
+.slide-card {
+  flex: 0 0 85%;
+  max-width: 320px;
+  background: #ffffff;
+  border-radius: 16px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.06);
+  border: 1px solid #f1f5f9;
+  scroll-snap-align: start;
+  overflow: hidden;
+  position: relative;
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+}
+
+.slide-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+
+/* Badges */
+.badge {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  background: #ef4444;
+  color: #fff;
+  font-size: 0.75rem;
+  font-weight: 700;
+  padding: 4px 10px;
+  border-radius: 20px;
+  z-index: 2;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.badge.discount-badge { background: #f59e0b; }
+.badge.ad-badge { background: #0284c7; }
+
+/* Image Container with Zoom effect */
+.slide-img-container {
+  width: 100%;
+  height: 140px;
+  background: #f8fafc;
+  overflow: hidden;
+}
+
+.slide-img-container img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.5s ease;
+}
+
+.slide-card:hover .slide-img-container img {
+  transform: scale(1.05);
+}
+
+/* Content Area */
+.slide-content {
+  padding: 16px;
+}
+
+.slide-content h4 {
+  font-size: 1rem;
+  font-weight: 700;
+  color: #0f172a;
+  margin: 0 0 6px 0;
+}
+
+.slide-content p {
+  font-size: 0.85rem;
+  color: #64748b;
+  margin: 0 0 16px 0;
+  line-height: 1.4;
+}
+
+.slide-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.price {
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #0284c7;
+}
+
+.price del {
+  font-size: 0.8rem;
+  color: #94a3b8;
+  margin-right: 4px;
+}
+
+.promo-code {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #d97706;
+  background: #fef3c7;
+  padding: 3px 8px;
+  border-radius: 6px;
+}
+
+.slide-btn {
+  background: #0f172a;
+  color: #fff;
+  border: none;
+  padding: 6px 12px;
+  border-radius: 8px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.slide-btn:hover {
+  background: #0284c7;
+}
+
+/* Dots Indicator */
+.slider-dots {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 12px;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #cbd5e1;
+  cursor: pointer;
+  transition: background 0.3s, transform 0.3s;
+}
+
+.dot.active {
+  background: #0284c7;
+  transform: scale(1.2);
+}
   /* Navbar */
   .navbar { 
     display: flex; 
