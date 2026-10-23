@@ -71,20 +71,22 @@
     <div class="container">
       <!-- Profile & Status Toggle -->
       <div class="profile-card">
-        <div class="rider-info">
-          <h3 id="riderNameDisplay">Rider Name</h3>
-          <p id="riderPhoneDisplay">2547...</p>
-          <span id="gpsStatusBadge" class="gps-status-pill">📡 GPS Standby</span>
-        </div>
-        <div>
-          <label class="switch">
-            <input type="checkbox" id="statusToggle">
-            <span class="slider"></span>
-          </label>
-          <span id="statusText" class="status-label">OFFLINE</span>
-        </div>
-      </div>
-
+  <div class="rider-info">
+    <h3 id="riderNameDisplay">Rider Name</h3>
+    <p id="riderPhoneDisplay">2547...</p>
+    <div style="display: flex; gap: 8px; margin-top: 6px;">
+      <span id="gpsStatusBadge" class="gps-status-pill">📡 GPS Standby</span>
+      <span id="riderRatingBadge" class="gps-status-pill" style="background: #fef3c7; color: #d97706;">⭐ -- (0 reviews)</span>
+    </div>
+  </div>
+  <div>
+    <label class="switch">
+      <input type="checkbox" id="statusToggle">
+      <span class="slider"></span>
+    </label>
+    <span id="statusText" class="status-label">OFFLINE</span>
+  </div>
+</div>
       <!-- Navigation Tabs -->
       <div class="tabs">
         <button class="tab-btn active" onclick="switchTab('pending')">Pending Orders</button>
@@ -227,7 +229,19 @@
         console.error('Failed to load rider orders');
       }
     }
-
+    // Fetch Rider Ratings Summary
+try {
+  const ratingRes = await fetch(`${API_BASE_URL}/api/rider/ratings/${phone}`);
+  const ratingData = await ratingRes.json();
+  if (ratingData.success) {
+    const badge = document.getElementById('riderRatingBadge');
+    if (badge) {
+      badge.textContent = `⭐ ${ratingData.averageRating} (${ratingData.totalReviews} reviews)`;
+    }
+  }
+} catch (e) {
+  console.warn('Could not load rider ratings summary');
+}
     function renderOrders(orders, containerId, isPending) {
       const container = document.getElementById(containerId);
       if (!orders || orders.length === 0) {
