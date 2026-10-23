@@ -116,69 +116,117 @@
       <!-- Cards rendered dynamically via app.js -->
     </div>
   </main>
-<div class="boda-slider-wrapper">
-  <div class="slider-header">
-    <h3>🔥 Hot Deals & Favorites</h3>
-    <span class="slider-swipe-hint">Swipe to explore →</span>
-  </div>
 
-  <div class="promo-slider" id="promoSlider">
-    <!-- Slide 1: Most Bought Dish -->
-    <div class="slide-card most-bought">
-      <div class="badge hot">🔥 Most Bought</div>
-      <div class="slide-img-container">
-        <img src="./icons/icon-192.png" alt="Mega Kimana Fries" loading="lazy">
+  <!-- Promotional Slider -->
+  <div class="boda-slider-wrapper">
+    <div class="slider-header">
+      <h3>🔥 Hot Deals & Favorites</h3>
+      <span class="slider-swipe-hint">Swipe to explore →</span>
+    </div>
+
+    <div class="promo-slider" id="promoSlider">
+      <!-- Slide 1: Most Bought Dish -->
+      <div class="slide-card most-bought">
+        <div class="badge hot">🔥 Most Bought</div>
+        <div class="slide-img-container">
+          <img src="./icons/icon-192.png" alt="Mega Kimana Fries" loading="lazy">
+        </div>
+        <div class="slide-content">
+          <h4>Mega Kimana Fries Box</h4>
+          <p>Loaded with extra cheese, beef strips & secret sauce.</p>
+          <div class="slide-footer">
+            <span class="price">KSh 350</span>
+            <button class="slide-btn" onclick="scrollToMenu()">Order Now</button>
+          </div>
+        </div>
       </div>
-      <div class="slide-content">
-        <h4>Mega Kimana Fries Box</h4>
-        <p>Loaded with extra cheese, beef strips & secret sauce.</p>
-        <div class="slide-footer">
-          <span class="price">KSh 350</span>
-          <button class="slide-btn" onclick="scrollToMenu()">Order Now</button>
+
+      <!-- Slide 2: Weekly Discount -->
+      <div class="slide-card discount">
+        <div class="badge discount-badge">⚡ 20% OFF</div>
+        <div class="slide-img-container">
+          <img src="./icons/icon-192.png" alt="Weekend Combo" loading="lazy">
+        </div>
+        <div class="slide-content">
+          <h4>Weekend Combo Special</h4>
+          <p>Fries + Double Burger + Cold Soda bundle.</p>
+          <div class="slide-footer">
+            <span class="price"><del>KSh 650</del> <strong>KSh 520</strong></span>
+            <button class="slide-btn" onclick="scrollToMenu()">Claim Deal</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Slide 3: Special Ad / Promo -->
+      <div class="slide-card ad">
+        <div class="badge ad-badge">🌟 BodaSwift Perk</div>
+        <div class="slide-img-container">
+          <img src="./icons/icon-192.png" alt="Free Delivery" loading="lazy">
+        </div>
+        <div class="slide-content">
+          <h4>Free Rider Delivery!</h4>
+          <p>Zero delivery fees on all orders above KSh 1,000.</p>
+          <div class="slide-footer">
+            <span class="promo-code">Code: SWIFTFREE</span>
+            <button class="slide-btn" onclick="scrollToMenu()">Shop Now</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <!-- Slide 2: Weekly Discount -->
-    <div class="slide-card discount">
-      <div class="badge discount-badge">⚡ 20% OFF</div>
-      <div class="slide-img-container">
-        <img src="./icons/icon-192.png" alt="Weekend Combo" loading="lazy">
-      </div>
-      <div class="slide-content">
-        <h4>Weekend Combo Special</h4>
-        <p>Fries + Double Burger + Cold Soda bundle.</p>
-        <div class="slide-footer">
-          <span class="price"><del>KSh 650</del> <strong>KSh 520</strong></span>
-          <button class="slide-btn" onclick="scrollToMenu()">Claim Deal</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Slide 3: Special Ad / Promo -->
-    <div class="slide-card ad">
-      <div class="badge ad-badge">🌟 BodaSwift Perk</div>
-      <div class="slide-img-container">
-        <img src="./icons/icon-192.png" alt="Free Delivery" loading="lazy">
-      </div>
-      <div class="slide-content">
-        <h4>Free Rider Delivery!</h4>
-        <p>Zero delivery fees on all orders above KSh 1,000.</p>
-        <div class="slide-footer">
-          <span class="promo-code">Code: SWIFTFREE</span>
-          <button class="slide-btn" onclick="scrollToMenu()">Shop Now</button>
-        </div>
-      </div>
+    <!-- Interactive Dot Indicators -->
+    <div class="slider-dots" id="sliderDots">
+      <span class="dot active" onclick="currentSlide(0)"></span>
+      <span class="dot" onclick="currentSlide(1)"></span>
+      <span class="dot" onclick="currentSlide(2)"></span>
     </div>
   </div>
 
-  <!-- Interactive Dot Indicators -->
-  <div class="slider-dots" id="sliderDots">
-    <span class="dot active" onclick="currentSlide(0)"></span>
-    <span class="dot" onclick="currentSlide(1)"></span>
-    <span class="dot" onclick="currentSlide(2)"></span>
-  </div>
-</div>
+  <!-- Classic Footer with Social Links -->
+  <footer class="app-footer">
+    <div class="footer-container">
+      <div class="footer-brand">
+        <h3>🍟 Kimana Fries</h3>
+        <p>Crispy, hot, and seasoned to perfection. Delivered ultra-fast via BodaSwift Express.</p>
+        <div class="social-links">
+          <a href="https://wa.me/254700000000" target="_blank" rel="noopener" aria-label="WhatsApp" class="social-icon wa">
+            💬
+          </a>
+          <a href="https://instagram.com" target="_blank" rel="noopener" aria-label="Instagram" class="social-icon ig">
+            📸
+          </a>
+          <a href="https://facebook.com" target="_blank" rel="noopener" aria-label="Facebook" class="social-icon fb">
+            📘
+          </a>
+          <a href="https://tiktok.com" target="_blank" rel="noopener" aria-label="TikTok" class="social-icon tt">
+            🎵
+          </a>
+        </div>
+      </div>
+
+      <div class="footer-links">
+        <h4>Quick Links</h4>
+        <ul>
+          <li><a href="./index.html">Order Menu</a></li>
+          <li><a href="./customer-dashboard.html">Order Status & Tracking</a></li>
+          <li><a href="./rider.html">Join as BodaSwift Rider</a></li>
+          <li><a href="./manager.html">Kitchen Portal</a></li>
+        </ul>
+      </div>
+
+      <div class="footer-contact">
+        <h4>Contact & Hours</h4>
+        <p>📍 Nairobi, Kenya</p>
+        <p>📞 +254 739 612 301</p>
+        <p>⏰ Open Daily: 10:00 AM – 11:00 PM</p>
+      </div>
+    </div>
+
+    <div class="footer-bottom">
+      <p>&copy; 2026 Kimana Fries & BodaSwift Logistics. All rights reserved.</p>
+    </div>
+  </footer>
+
   <!-- Slide-over Cart Drawer -->
   <div class="cart-overlay" id="cartOverlay"></div>
   <aside class="cart-drawer" id="cartDrawer">
