@@ -18,26 +18,34 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message: ', payload);
 
+  // Extract title (prioritize data payload sent from server.js)
   const notificationTitle = 
-    payload?.notification?.title || 
     payload?.data?.title || 
+    payload?.notification?.title || 
     '🔐 BodaSwift Access Passcode';
 
-  const notificationBody = 
-    payload?.notification?.body || 
+  // Format body explicitly using otpCode if available
+  let notificationBody = 
     payload?.data?.body || 
-    payload?.data?.message || 
-    'Your verification code is ready.';
+    payload?.notification?.body || 
+    payload?.data?.message;
+
+  if (payload?.data?.otpCode) {
+    notificationBody = `Your BodaSwift verification code is: ${payload.data.otpCode}`;
+  } else if (!notificationBody) {
+    notificationBody = 'Your verification code is ready.';
+  }
 
   const notificationOptions = {
     body: notificationBody,
     icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
     badge: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
-    tag: 'bodaswift-otp-passcode', // Ensures new passcodes replace old ones instead of stacking duplicates!
-    renotify: true,                 // Vibrates/sounds for new incoming passcodes
-    requireInteraction: true,       // Holds notification on screen until user acts
+    tag: 'bodaswift-otp-passcode', // Replaces old OTP notifications instead of stacking
+    renotify: true,                 // Triggers sound/vibration on new code arrival
+    requireInteraction: true,       // Holds notification on-screen until user interacts
     data: {
-      url: payload?.data?.url || './index.html'
+      url: payload?.data?.url || './customer-dashboard.html',
+      otpCode: payload?.data?.otpCode || ''
     }
   };
 
