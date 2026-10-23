@@ -4,12 +4,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging-comp
 
 // Initialize Firebase statically on initial worker script evaluation
 firebase.initializeApp({
-  apiKey: "YOUR_FIREBASE_API_KEY",
-  authDomain: "YOUR_PROJECT_ID.firebaseapp.com",
-  projectId: "YOUR_PROJECT_ID",
-  storageBucket: "YOUR_PROJECT_ID.appspot.com",
-  messagingSenderId: "YOUR_SENDER_ID",
-  appId: "YOUR_APP_ID"
+  apiKey: "AIzaSyByYP8HHxy1LSV6nrG7kBAwMjFh6IuYMC4",
+  authDomain: "bodaswift-auth.firebaseapp.com",
+  projectId: "bodaswift-auth",
+  storageBucket: "bodaswift-auth.firebasestorage.app",
+  messagingSenderId: "973632392043",
+  appId: "1:973632392043:web:3d7439b12e522e04a31a2e",
 });
 
 const messaging = firebase.messaging();
