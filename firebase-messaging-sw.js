@@ -9,7 +9,7 @@ firebase.initializeApp({
   projectId: "bodaswift-auth",
   storageBucket: "bodaswift-auth.firebasestorage.app",
   messagingSenderId: "973632392043",
-  appId: "1:973632392043:web:3d7439b12e522e04a31a2e",
+  appId: "1:973632392043:web:3d7439b12e522e04a31a2e"
 });
 
 const messaging = firebase.messaging();
@@ -18,13 +18,11 @@ const messaging = firebase.messaging();
 messaging.onBackgroundMessage((payload) => {
   console.log('[firebase-messaging-sw.js] Received background message: ', payload);
 
-  // Extract title (prioritize data payload sent from server.js)
   const notificationTitle = 
     payload?.data?.title || 
     payload?.notification?.title || 
     '🔐 BodaSwift Access Passcode';
 
-  // Format body explicitly using otpCode if available
   let notificationBody = 
     payload?.data?.body || 
     payload?.notification?.body || 
@@ -40,9 +38,9 @@ messaging.onBackgroundMessage((payload) => {
     body: notificationBody,
     icon: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
     badge: 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>',
-    tag: 'bodaswift-otp-passcode', // Replaces old OTP notifications instead of stacking
-    renotify: true,                 // Triggers sound/vibration on new code arrival
-    requireInteraction: true,       // Holds notification on-screen until user interacts
+    tag: 'bodaswift-otp-passcode',
+    renotify: true,
+    requireInteraction: true,
     data: {
       url: payload?.data?.url || './customer-dashboard.html',
       otpCode: payload?.data?.otpCode || ''
