@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-   <!-- Leaflet CSS for maps -->
-<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Kimana Fries - Customer Orders</title>
+  
+  <!-- Leaflet CSS & JS for Real-time GPS Maps -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
   <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🍟</text></svg>">
+
   <style>
     :root {
       --mc-red: #da291c;
@@ -44,7 +47,7 @@
     /* Order Cards */
     .order-card { background: white; border-radius: 10px; padding: 1.2rem; margin-bottom: 1rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); border-left: 5px solid var(--warning); position: relative; }
     .order-card.dispatched { border-left-color: var(--dark); }
-    .order-card.delivered { border-left-color: var(--success); opacity: 0.9; }
+    .order-card.delivered { border-left-color: var(--success); opacity: 0.95; }
 
     .order-header { display: flex; justify-content: space-between; font-weight: bold; font-size: 0.95rem; margin-bottom: 0.5rem; color: var(--dark); }
     .order-details { font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 0.8rem; }
@@ -55,9 +58,38 @@
     .badge-dispatched { background: #cce5ff; color: #004085; }
     .badge-delivered { background: #d4edda; color: #155724; }
 
-    /* Rider Contact Box */
-    .rider-box { background: #f1f5f9; padding: 0.8rem; border-radius: 8px; font-size: 0.85rem; margin-top: 0.8rem; display: flex; justify-content: space-between; align-items: center; }
-    .rider-btn { background: #25D366; color: white; text-decoration: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-weight: bold; font-size: 0.8rem; }
+    /* Rider Contact & Action Boxes */
+    .rider-box { background: #f1f5f9; padding: 0.8rem; border-radius: 8px; font-size: 0.85rem; margin-top: 0.8rem; display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .rider-btn { background: #25D366; color: white; text-decoration: none; padding: 0.4rem 0.8rem; border-radius: 6px; font-weight: bold; font-size: 0.8rem; display: inline-block; }
+    .track-btn { background: #0284c7; color: white; border: none; padding: 0.45rem 0.8rem; border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer; }
+    .rate-btn { background: #f59e0b; color: white; border: none; padding: 0.45rem 0.8rem; border-radius: 6px; font-weight: bold; font-size: 0.8rem; cursor: pointer; }
+
+    /* Live GPS Tracking Card Styles */
+    .tracking-card { background: white; border-radius: 12px; padding: 1rem; margin-bottom: 1.2rem; box-shadow: 0 4px 15px rgba(0,0,0,0.08); border: 2px solid #0284c7; }
+    .tracking-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .tracking-header h4 { color: #0f172a; font-size: 0.95rem; }
+    .pulse-status { font-size: 0.8rem; color: #0284c7; font-weight: bold; background: #e0f2fe; padding: 3px 8px; border-radius: 12px; }
+    
+    /* Map Marker Custom Style */
+    .custom-map-icon { font-size: 24px; text-align: center; line-height: 30px; }
+
+    /* 5-Star Rating Modal Styles */
+    .rating-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(4px); z-index: 10001; display: flex; align-items: center; justify-content: center; padding: 1rem; }
+    .rating-box { background: white; border-radius: 16px; padding: 1.5rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2); text-align: center; }
+    .rating-box h3 { color: #1e293b; font-size: 1.2rem; margin-bottom: 4px; }
+    .rating-box p { color: #64748b; font-size: 0.85rem; margin-bottom: 12px; }
+    
+    .star-rating { font-size: 2rem; color: #cbd5e1; cursor: pointer; margin-bottom: 12px; user-select: none; }
+    .star-rating span { transition: color 0.2s; padding: 0 2px; }
+    .star-rating span.active { color: #f59e0b; }
+
+    .rating-tags { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; margin-bottom: 12px; }
+    .tag-btn { background: #f1f5f9; border: 1px solid #cbd5e1; color: #475569; padding: 5px 10px; border-radius: 16px; font-size: 0.75rem; font-weight: 600; cursor: pointer; transition: all 0.2s; }
+    .tag-btn.selected { background: #e0f2fe; border-color: #0284c7; color: #0284c7; }
+
+    .rating-box textarea { width: 100%; height: 70px; border: 1.5px solid #cbd5e1; border-radius: 8px; padding: 8px; font-size: 0.85rem; margin-bottom: 12px; resize: none; }
+    .submit-rating-btn { width: 100%; padding: 0.75rem; background: #28a745; color: white; border: none; border-radius: 8px; font-weight: bold; font-size: 0.9rem; cursor: pointer; }
+    .close-modal-btn { background: none; border: none; color: #94a3b8; font-size: 0.8rem; margin-top: 8px; cursor: pointer; text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -76,6 +108,15 @@
           <p id="phoneDisplay">2547...</p>
         </div>
         <button onclick="refreshOrders()" style="background: none; border: none; cursor: pointer; font-size: 1.2rem;">🔄</button>
+      </div>
+
+      <!-- Live GPS Map Tracker Container (Hidden until user clicks Track) -->
+      <div class="tracking-card" id="trackingCard" style="display: none;">
+        <div class="tracking-header">
+          <h4>🛵 Live Delivery Tracking (#<span id="activeTrackingOrderId">--</span>)</h4>
+          <span class="pulse-status" id="liveEta">📡 Tracking Rider...</span>
+        </div>
+        <div id="map" style="height: 250px; width: 100%; border-radius: 12px;"></div>
       </div>
 
       <!-- Navigation Tabs -->
@@ -99,45 +140,34 @@
       </div>
     </div>
   </div>
- 
 
-<!-- Live Map Tracker Container -->
-<div class="tracking-card" id="trackingCard" style="display: none;">
-  <div class="tracking-header">
-    <h4>🛵 Live Delivery Tracking</h4>
-    <span class="pulse-status" id="liveEta">Rider on the move...</span>
-  </div>
-  <div id="map" style="height: 250px; width: 100%; border-radius: 12px; margin-top: 10px;"></div>
-</div>
+  <!-- 5-Star Rating Modal -->
+  <div class="rating-modal" id="ratingModal" style="display: none;">
+    <div class="rating-box">
+      <h3>Rate Your BodaSwift Rider</h3>
+      <p>How was your delivery experience for Order #<span id="ratingModalOrderId">--</span>?</p>
+      
+      <div class="star-rating" id="starRating">
+        <span data-star="1">★</span>
+        <span data-star="2">★</span>
+        <span data-star="3">★</span>
+        <span data-star="4">★</span>
+        <span data-star="5">★</span>
+      </div>
 
-<!-- 5-Star Rating Modal -->
-<div class="rating-modal" id="ratingModal" style="display: none;">
-  <div class="rating-box">
-    <h3>Rate Your BodaSwift Rider</h3>
-    <p>How was your delivery experience?</p>
-    
-    <div class="star-rating" id="starRating">
-      <span data-star="1">★</span>
-      <span data-star="2">★</span>
-      <span data-star="3">★</span>
-      <span data-star="4">★</span>
-      <span data-star="5">★</span>
+      <div class="rating-tags" id="ratingTags">
+        <button class="tag-btn" onclick="toggleTag(this)">⚡ Super Fast</button>
+        <button class="tag-btn" onclick="toggleTag(this)">🔥 Food Kept Hot</button>
+        <button class="tag-btn" onclick="toggleTag(this)">😊 Polite Rider</button>
+      </div>
+
+      <textarea id="ratingComment" placeholder="Add an optional note..."></textarea>
+      <button class="submit-rating-btn" onclick="submitRating()">Submit Review</button>
+      <button class="close-modal-btn" onclick="closeRatingModal()">Cancel</button>
     </div>
-
-    <div class="rating-tags" id="ratingTags">
-      <button class="tag-btn" onclick="toggleTag(this)">⚡ Super Fast</button>
-      <button class="tag-btn" onclick="toggleTag(this)">🔥 Food Kept Hot</button>
-      <button class="tag-btn" onclick="toggleTag(this)">😊 Polite Rider</button>
-    </div>
-
-    <textarea id="ratingComment" placeholder="Add an optional note..."></textarea>
-    <button class="submit-rating-btn" onclick="submitRating()">Submit Review</button>
   </div>
-</div>
 
-  <!-- ========================================== -->
-  <!-- SECURITY GATEWAY MODAL (TIMED FALLBACK)   -->
-  <!-- ========================================== -->
+  <!-- SECURITY GATEWAY MODAL (TIMED FALLBACK) -->
   <div id="pushSecurityGate" style="position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px); z-index: 10000; display: flex; align-items: center; justify-content: center; padding: 1rem;">
     <div style="background: white; border-radius: 16px; padding: 2rem; width: 100%; max-width: 380px; box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2); text-align: center; font-family: sans-serif;">
       
@@ -155,7 +185,7 @@
 
       <!-- Code Verification Step -->
       <div id="codeStep" style="display: none;">
-        <!-- On-Screen Fallback Display (Revealed after 3 min push timeout) -->
+        <!-- On-Screen Fallback Display -->
         <div id="fallbackCodeDisplay" style="display: none; background: #f1f5f9; border: 2px dashed #0284c7; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;">
           <span style="font-size: 0.8rem; color: #475569;">Your Passcode (Fallback):</span><br>
           <strong id="displayCodeText" style="font-size: 1.6rem; color: #0284c7; letter-spacing: 4px;">------</strong>
@@ -176,12 +206,25 @@
     const API_BASE_URL = 'https://fries-v0l8.onrender.com';
     let activePhone = '';
 
+    // GPS Map Tracking Variables
+    let map = null;
+    let riderMarker = null;
+    let trackingInterval = null;
+    let activeTrackingOrderId = null;
+
+    // Rating Variables
+    let selectedRating = 0;
+    let activeRatingOrderId = null;
+    let activeRatingRiderPhone = '';
+
     const dashboardView = document.getElementById('dashboardView');
     const logoutBtn = document.getElementById('logoutBtn');
     const phoneDisplay = document.getElementById('phoneDisplay');
 
     // Check existing session on page load
     document.addEventListener('DOMContentLoaded', () => {
+      setupStarRatingListeners();
+
       const verifiedPhone = sessionStorage.getItem('bodaswift_verified_phone');
       const sessionToken = sessionStorage.getItem('bodaswift_session_token');
 
@@ -197,6 +240,7 @@
     });
 
     logoutBtn.addEventListener('click', () => {
+      if (trackingInterval) clearInterval(trackingInterval);
       sessionStorage.removeItem('bodaswift_verified_phone');
       sessionStorage.removeItem('bodaswift_session_token');
       dashboardView.style.display = 'none';
@@ -262,12 +306,24 @@
 
         let riderBoxHtml = '';
         if (order.riderName) {
+          const trackBtnHtml = order.status === 'DISPATCHED' 
+            ? `<button onclick="startOrderTracking('${order.id}')" class="track-btn">📡 Track Live GPS</button>` 
+            : '';
+
+          const rateBtnHtml = order.status === 'DELIVERED' 
+            ? `<button onclick="openRatingModal('${order.id}', '${riderPhoneClean}')" class="rate-btn">⭐ Rate Rider</button>` 
+            : '';
+
           riderBoxHtml = `
             <div class="rider-box">
               <div>
-                <strong>🛵 Assigned Rider:</strong> ${order.riderName}
+                <strong>🛵 Rider:</strong> ${order.riderName}
               </div>
-              <a href="${riderWaLink}" target="_blank" class="rider-btn">WhatsApp Rider 💬</a>
+              <div style="display: flex; gap: 6px; flex-wrap: wrap;">
+                <a href="${riderWaLink}" target="_blank" class="rider-btn">WhatsApp 💬</a>
+                ${trackBtnHtml}
+                ${rateBtnHtml}
+              </div>
             </div>
           `;
         } else if (order.status !== 'DELIVERED') {
@@ -309,6 +365,124 @@
         document.getElementById('historyTab').classList.add('active');
       }
     }
+
+    // ==========================================
+    // REAL-TIME GPS LEAFLET MAP TRACKING ENGINE
+    // ==========================================
+    function initMap(initialLat = -1.286389, initialLng = 36.817223) {
+      if (map) return;
+      map = L.map('map').setView([initialLat, initialLng], 15);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '© OpenStreetMap'
+      }).addTo(map);
+
+      const motorcycleIcon = L.divIcon({
+        html: '🛵',
+        className: 'custom-map-icon',
+        iconSize: [30, 30]
+      });
+
+      riderMarker = L.marker([initialLat, initialLng], { icon: motorcycleIcon }).addTo(map);
+    }
+
+    function startOrderTracking(orderId) {
+      activeTrackingOrderId = orderId;
+      document.getElementById('activeTrackingOrderId').textContent = orderId;
+      document.getElementById('trackingCard').style.display = 'block';
+      document.getElementById('trackingCard').scrollIntoView({ behavior: 'smooth' });
+
+      initMap();
+
+      if (trackingInterval) clearInterval(trackingInterval);
+
+      // Poll backend every 4 seconds for rider coordinates
+      trackingInterval = setInterval(async () => {
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/customer/track-order/${orderId}`);
+          const data = await res.json();
+
+          if (data.success && data.trackingActive && data.location) {
+            const { lat, lng } = data.location;
+            const newPos = [lat, lng];
+
+            riderMarker.setLatLng(newPos);
+            map.panTo(newPos);
+            document.getElementById('liveEta').textContent = '📡 Live Signal Active';
+          } else {
+            document.getElementById('liveEta').textContent = '⏳ Waiting for rider GPS signal...';
+          }
+        } catch (err) {
+          console.error('[Map Tracking Error]:', err);
+        }
+      }, 4000);
+    }
+
+    // ==========================================
+    // 5-STAR RIDER RATING SYSTEM
+    // ==========================================
+    function setupStarRatingListeners() {
+      document.querySelectorAll('#starRating span').forEach(star => {
+        star.addEventListener('click', (e) => {
+          selectedRating = parseInt(e.target.getAttribute('data-star'), 10);
+          document.querySelectorAll('#starRating span').forEach((s, idx) => {
+            s.classList.toggle('active', idx < selectedRating);
+          });
+        });
+      });
+    }
+
+    function toggleTag(btn) {
+      btn.classList.toggle('selected');
+    }
+
+    function openRatingModal(orderId, riderPhone) {
+      activeRatingOrderId = orderId;
+      activeRatingRiderPhone = riderPhone;
+      selectedRating = 0;
+      
+      document.getElementById('ratingModalOrderId').textContent = orderId;
+      document.getElementById('ratingComment').value = '';
+      document.querySelectorAll('#starRating span').forEach(s => s.classList.remove('active'));
+      document.querySelectorAll('.tag-btn').forEach(b => b.classList.remove('selected'));
+
+      document.getElementById('ratingModal').style.display = 'flex';
+    }
+
+    function closeRatingModal() {
+      document.getElementById('ratingModal').style.display = 'none';
+    }
+
+    async function submitRating() {
+      if (selectedRating === 0) return alert('Please tap a star to give a rating (1 to 5 stars).');
+
+      const selectedTags = Array.from(document.querySelectorAll('.tag-btn.selected')).map(b => b.textContent.trim());
+      const comment = document.getElementById('ratingComment').value.trim();
+
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/customer/rate-rider`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId: activeRatingOrderId,
+            riderPhone: activeRatingRiderPhone,
+            rating: selectedRating,
+            tags: selectedTags,
+            comment: comment
+          })
+        });
+
+        const data = await res.json();
+        if (res.ok) {
+          alert('Thank you for your rating!');
+          closeRatingModal();
+        } else {
+          alert(data.message || 'Failed to submit rating.');
+        }
+      } catch (err) {
+        alert('Network error submitting review.');
+      }
+    }
   </script>
 
   <!-- FIREBASE WEB PUSH AUTH SCRIPT (WITH TIMED MULTI-STAGE FALLBACK) -->
@@ -322,8 +496,6 @@
     let countdownTimer = null;
     let cachedFallbackCode = '';
 
-    // Dynamically load Firebase config from Render environment variables via server endpoint
-    // Dynamically load Firebase config from Render environment variables via server endpoint
     async function initFirebaseClient() {
       try {
         const res = await fetch(`${BACKEND_API}/api/config/firebase`);
@@ -355,7 +527,6 @@
       statusMsg.style.color = '#0284c7';
       statusMsg.textContent = '🔄 Requesting notification permissions...';
 
-      // 1. Request Browser Permission and Register Device Push Token
       try {
         const permission = await Notification.requestPermission();
         if (permission === 'granted' && messaging) {
@@ -380,7 +551,6 @@
 
       statusMsg.textContent = '📤 Attempting Web Push notification...';
 
-      // 2. Request OTP Code from Backend
       try {
         const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
           method: 'POST',
@@ -394,7 +564,6 @@
           document.getElementById('phoneStep').style.display = 'none';
           document.getElementById('codeStep').style.display = 'block';
 
-          // Start 3-Minute (180s) Push Window Timer
           startPushTimeoutTimer();
         } else {
           statusMsg.style.color = '#da291c';
@@ -407,7 +576,7 @@
     };
 
     function startPushTimeoutTimer() {
-      let timeLeft = 180; // 3 minutes window
+      let timeLeft = 180;
       const statusMsg = document.getElementById('gateStatusMsg');
       const fallbackDisplay = document.getElementById('fallbackCodeDisplay');
       const displayCodeText = document.getElementById('displayCodeText');
@@ -424,7 +593,6 @@
         } else {
           clearInterval(countdownTimer);
           
-          // Push Timer Expired: Reveal On-Screen Code & Trigger WhatsApp Backup
           statusMsg.style.color = '#0284c7';
           statusMsg.textContent = 'Push timed out. Revealing on-screen code & sending WhatsApp backup...';
           
