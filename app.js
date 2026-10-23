@@ -266,6 +266,93 @@ function scrollToMenu() {
     menuElement.scrollIntoView({ behavior: 'smooth' });
   }
 }
+let map = null;
+let riderMarker = null;
+let trackingInterval = null;
+let selectedRating = 0;
+let currentTrackingOrderId = null;
+
+function initMap(initialLat = -1.286389, initialLng = 36.817223) {
+  if (map) return;
+  map = L.map('map').setView([initialLat, initialLng], 15);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '© OpenStreetMap'
+  }).addTo(map);
+
+  const motorcycleIcon = L.divIcon({
+    html: '🛵',
+    className: 'custom-map-icon',
+    iconSize: [30, 30]
+  });
+
+  riderMarker = L.marker([initialLat, initialLng], { icon: motorcycleIcon }).addTo(map);
+}
+
+function startCustomerOrderTracking(orderId) {
+  currentTrackingOrderId = orderId;
+  document.getElementById('trackingCard').style.display = 'block';
+  initMap();
+
+  trackingInterval = setInterval(async () => {
+    try {
+      const res = await fetch(`${BACKEND_API}/api/customer/track-order/${orderId}`);
+      const data = await res.json();
+
+      if (data.success && data.trackingActive) {
+        const { lat, lng } = data.location;
+        const newPos = [lat, lng];
+        
+        riderMarker.setLatLng(newPos);
+        map.panTo(newPos);
+      }
+    } catch (err) {
+      console.error('[Map Sync Error]:', err);
+    }
+  }, 4000); // Sync location every 4 seconds
+}
+
+// Star Rating Interactivity
+document.querySelectorAll('#starRating span').forEach(star => {
+  star.addEventListener('click', (e) => {
+    selectedRating = parseInt(e.target.getAttribute('data-star'), 10);
+    document.querySelectorAll('#starRating span').forEach((s, idx) => {
+      s.classList.toggle('active', idx < selectedRating);
+    });
+  });
+});
+
+function toggleTag(btn) {
+  btn.classList.toggle('selected');
+}
+
+async function submitRating() {
+  if (selectedRating === 0) return alert('Please select a star rating.');
+
+  const selectedTags = Array.from(document.querySelectorAll('.tag-btn.selected')).map(b => b.textContent.trim());
+  const comment = document.getElementById('ratingComment').value.trim();
+
+  try {
+    const res = await fetch(`${BACKEND_API}/api/customer/rate-rider`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        orderId: currentTrackingOrderId,
+        rating: selectedRating,
+        tags: selectedTags,
+        comment
+      })
+    });
+
+    if (res.ok) {
+      alert('Thank you for rating your rider!');
+      document.getElementById('ratingModal').style.display = 'none';
+      if (trackingInterval) clearInterval(trackingInterval);
+    }
+  } catch (err) {
+    alert('Failed to submit rating.');
+  }
+}
 // ==========================================
 // INITIALIZATION
 // ==========================================
