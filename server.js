@@ -934,28 +934,33 @@ app.post('/api/notifications/register-token', async (req, res) => {
 });
 
 /**
- * Helper: Send Dual-Payload Push Notification to all devices registered under a phone number
+ * Helper: Send Data-Only Push Notification to a specific device token (or fallback to phone)
  */
-/**
- * Helper: Send Data-Only Push Notification to all devices registered under a phone number
- * Forces FCM to pass the message directly to firebase-messaging-sw.js for custom OTP display.
- */
-async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode = null) {
+async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode = null, targetToken = null) {
   try {
     const cleanPhone = String(phone).trim();
-    const tokenResult = await turso.execute({
-      sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
-      args: [cleanPhone]
-    });
+    let tokensToTarget = [];
 
-    if (tokenResult.rows.length === 0) {
-      console.log(`[Push Warning] No registered FCM tokens found for phone: ${cleanPhone}`);
+    if (targetToken) {
+      // Target strictly the single device token provided in the request
+      tokensToTarget = [{ token: String(targetToken).trim() }];
+    } else {
+      // Fallback: fetch tokens associated with the phone number
+      const tokenResult = await turso.execute({
+        sql: `SELECT token FROM fcm_tokens WHERE phone_number = ?`,
+        args: [cleanPhone]
+      });
+      tokensToTarget = tokenResult.rows;
+    }
+
+    if (tokensToTarget.length === 0) {
+      console.log(`[Push Warning] No valid FCM tokens found for target: ${cleanPhone}`);
       return false;
     }
 
     let successCount = 0;
 
-    for (const row of tokenResult.rows) {
+    for (const row of tokensToTarget) {
       try {
         await admin.messaging().send({
           token: row.token,
@@ -989,7 +994,7 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode
       }
     }
 
-    console.log(`[Push Dispatch Summary] To: ${cleanPhone} | Successful Deliveries: ${successCount}`);
+    console.log(`[Push Dispatch Summary] To Phone: ${cleanPhone} | Target Token Mode: ${!!targetToken} | Successful Deliveries: ${successCount}`);
     return successCount > 0;
   } catch (err) {
     console.error('[FCM Send Error Exception]:', err);
@@ -1004,10 +1009,12 @@ const pushOtpStore = new Map();
 
 /**
  * 2. Request OTP: Attempts Push notification first
+ *//**
+ * 2. Request OTP: Accepts optional device token to target only the requesting browser/device
  */
 app.post('/api/auth/request-push-otp', async (req, res) => {
   try {
-    const { phone } = req.body;
+    const { phone, token } = req.body;
     if (!phone) return res.status(400).json({ success: false, message: 'Phone number required.' });
 
     const cleanPhone = String(phone).trim();
@@ -1016,16 +1023,17 @@ app.post('/api/auth/request-push-otp', async (req, res) => {
 
     pushOtpStore.set(cleanPhone, { code: otpCode, expiresAt });
 
-    // Send push notification with explicit otpCode
+    // Send push notification targeting ONLY the specific requesting device token (if passed)
     const pushSent = await sendPushNotificationToUser(
       cleanPhone,
       '🔐 BodaSwift Access Passcode',
       `Your verification code is: ${otpCode}`,
       './customer-dashboard.html',
-      otpCode
+      otpCode,
+      token || null
     );
 
-    console.log(`[OTP Generated] Phone: ${cleanPhone} | Code: ${otpCode} | Push Attempted: ${pushSent}`);
+    console.log(`[OTP Generated] Phone: ${cleanPhone} | Code: ${otpCode} | Targeted Push Sent: ${pushSent}`);
 
     return res.status(200).json({
       success: true,
