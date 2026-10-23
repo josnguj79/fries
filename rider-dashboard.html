@@ -231,7 +231,7 @@
     }
         // Fetch Rider Ratings Summary
       try {
-            const ratingRes = await fetch(`${API_BASE_URL}/api/rider/ratings/${phone}`);
+        const ratingRes = await fetch(`${API_BASE_URL}/api/rider/ratings/${phone}`);
             const ratingData = await ratingRes.json();
             if (ratingData.success) {
               const badge = document.getElementById('riderRatingBadge');
@@ -241,7 +241,7 @@
             }
           } catch (e) {
             console.warn('Could not load rider ratings summary');
-          }
+          }  
     function renderOrders(orders, containerId, isPending) {
       const container = document.getElementById(containerId);
       if (!orders || orders.length === 0) {
