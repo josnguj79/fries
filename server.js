@@ -936,6 +936,10 @@ app.post('/api/notifications/register-token', async (req, res) => {
 /**
  * Helper: Send Dual-Payload Push Notification to all devices registered under a phone number
  */
+/**
+ * Helper: Send Data-Only Push Notification to all devices registered under a phone number
+ * Forces FCM to pass the message directly to firebase-messaging-sw.js for custom OTP display.
+ */
 async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode = null) {
   try {
     const cleanPhone = String(phone).trim();
@@ -955,10 +959,7 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode
       try {
         await admin.messaging().send({
           token: row.token,
-          notification: { 
-            title: title, 
-            body: body 
-          },
+          // DATA-ONLY PAYLOAD: Forces browser Service Worker to process and render the notification
           data: { 
             title: String(title),
             body: String(body),
@@ -969,11 +970,8 @@ async function sendPushNotificationToUser(phone, title, body, targetUrl, otpCode
             headers: {
               Urgency: 'high'
             },
-            notification: {
-              title: title,
-              body: body,
-              icon: 'https://bodaswift.onrender.com/icons/icon-192.png',
-              requireInteraction: true
+            fcmOptions: {
+              link: targetUrl || './customer-dashboard.html'
             }
           }
         });
