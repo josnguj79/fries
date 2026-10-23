@@ -484,5 +484,69 @@
       }
     };
   </script>
+  <script>
+    // ==========================================
+// BodaSwift Live GPS Tracker (Rider Side)
+// ==========================================
+let gpsWatchId = null;
+const BACKEND_API = 'https://fries-v0l8.onrender.com';
+
+/**
+ * Start streaming rider GPS coordinates to backend
+ * @param {string} orderId - Active order ID
+ * @param {string} riderPhone - Active rider phone number
+ */
+function startLiveGpsTracking(orderId, riderPhone) {
+  if (!('geolocation' in navigator)) {
+    alert('GPS Tracking not supported on this device.');
+    return;
+  }
+
+  const statusBadge = document.getElementById('gpsStatusBadge');
+  if (statusBadge) statusBadge.textContent = '📡 GPS Live';
+
+  gpsWatchId = navigator.geolocation.watchPosition(
+    async (position) => {
+      const { latitude, longitude, heading, speed } = position.coords;
+      console.log(`[Rider GPS] Lat: ${latitude}, Lng: ${longitude}`);
+
+      try {
+        await fetch(`${BACKEND_API}/api/rider/location`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            orderId,
+            riderPhone,
+            lat: latitude,
+            lng: longitude,
+            heading: heading || 0,
+            speed: speed || 0,
+            timestamp: Date.now()
+          })
+        });
+      } catch (err) {
+        console.error('[Rider GPS Dispatch Error]:', err);
+      }
+    },
+    (err) => {
+      console.warn('[Rider GPS Error]:', err.message);
+      if (statusBadge) statusBadge.textContent = '⚠️ GPS Error';
+    },
+    {
+      enableHighAccuracy: true,
+      maximumAge: 5000,
+      timeout: 10000
+    }
+  );
+}
+
+function stopLiveGpsTracking() {
+  if (gpsWatchId !== null) {
+    navigator.geolocation.clearWatch(gpsWatchId);
+    gpsWatchId = null;
+    console.log('[Rider GPS] Tracking stopped.');
+  }
+}
+  </script>
 </body>
 </html>
