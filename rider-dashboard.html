@@ -28,6 +28,9 @@
     .rider-info h3 { color: var(--dark); font-size: 1.1rem; }
     .rider-info p { color: #666; font-size: 0.85rem; margin-top: 2px; }
 
+    /* GPS Live Status Badge */
+    .gps-status-pill { display: inline-block; background: #e0f2fe; color: #0284c7; font-size: 0.75rem; font-weight: bold; padding: 2px 8px; border-radius: 10px; margin-top: 4px; }
+
     /* Toggle Switch */
     .switch-container { display: flex; align-items: center; gap: 8px; }
     .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
@@ -71,6 +74,7 @@
         <div class="rider-info">
           <h3 id="riderNameDisplay">Rider Name</h3>
           <p id="riderPhoneDisplay">2547...</p>
+          <span id="gpsStatusBadge" class="gps-status-pill">📡 GPS Standby</span>
         </div>
         <div>
           <label class="switch">
@@ -123,7 +127,7 @@
 
       <!-- Code Verification Step -->
       <div id="codeStep" style="display: none;">
-        <!-- On-Screen Fallback Display (Revealed after 3 min push timeout) -->
+        <!-- On-Screen Fallback Display -->
         <div id="fallbackCodeDisplay" style="display: none; background: #f1f5f9; border: 2px dashed #0284c7; padding: 0.8rem; border-radius: 8px; margin-bottom: 1rem;">
           <span style="font-size: 0.8rem; color: #475569;">Your Passcode (Fallback):</span><br>
           <strong id="displayCodeText" style="font-size: 1.6rem; color: #0284c7; letter-spacing: 4px;">------</strong>
@@ -139,10 +143,11 @@
     </div>
   </div>
 
-  <!-- DASHBOARD CONTROLLER SCRIPT -->
+  <!-- DASHBOARD CONTROLLER & GPS TRACKER SCRIPT -->
   <script>
     const API_BASE_URL = 'https://fries-v0l8.onrender.com';
     let activePhone = '';
+    let gpsWatchId = null;
 
     const dashboardView = document.getElementById('dashboardView');
     const logoutBtn = document.getElementById('logoutBtn');
@@ -168,6 +173,7 @@
     });
 
     logoutBtn.addEventListener('click', () => {
+      stopLiveGpsTracking();
       sessionStorage.removeItem('bodaswift_verified_phone');
       sessionStorage.removeItem('bodaswift_session_token');
       dashboardView.style.display = 'none';
@@ -209,6 +215,13 @@
         if (res.ok) {
           renderOrders(data.pending, 'pendingOrdersList', true);
           renderOrders(data.completed, 'completedOrdersList', false);
+
+          // If there is an active pending order, start live GPS broadcasting automatically!
+          if (data.pending && data.pending.length > 0) {
+            startLiveGpsTracking(data.pending[0].id, phone);
+          } else {
+            stopLiveGpsTracking();
+          }
         }
       } catch (err) {
         console.error('Failed to load rider orders');
@@ -271,6 +284,7 @@
 
         const data = await res.json();
         if (res.ok) {
+          stopLiveGpsTracking();
           alert(`✅ Order ${orderId} marked as DELIVERED!`);
           loadDashboardData(activePhone);
         } else {
@@ -287,6 +301,71 @@
           btn.disabled = false;
           btn.textContent = 'MARK AS DELIVERED ✅';
           btn.style.opacity = '1';
+        }
+      }
+    }
+
+    // ==========================================
+    // RIDER GPS TRACKING ENGINE
+    // ==========================================
+    function startLiveGpsTracking(orderId, riderPhone) {
+      if (!('geolocation' in navigator)) {
+        console.warn('GPS Tracking not supported on this device.');
+        return;
+      }
+
+      const statusBadge = document.getElementById('gpsStatusBadge');
+      if (statusBadge) {
+        statusBadge.textContent = '📡 GPS Live';
+        statusBadge.style.background = '#dcfce7';
+        statusBadge.style.color = '#15803d';
+      }
+
+      if (gpsWatchId !== null) return; // Already watching
+
+      gpsWatchId = navigator.geolocation.watchPosition(
+        async (position) => {
+          const { latitude, longitude, heading, speed } = position.coords;
+
+          try {
+            await fetch(`${API_BASE_URL}/api/rider/location`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                orderId,
+                riderPhone,
+                lat: latitude,
+                lng: longitude,
+                heading: heading || 0,
+                speed: speed || 0,
+                timestamp: Date.now()
+              })
+            });
+          } catch (err) {
+            console.error('[Rider GPS Dispatch Error]:', err);
+          }
+        },
+        (err) => {
+          console.warn('[Rider GPS Error]:', err.message);
+          if (statusBadge) statusBadge.textContent = '⚠️ GPS Error';
+        },
+        {
+          enableHighAccuracy: true,
+          maximumAge: 4000,
+          timeout: 8000
+        }
+      );
+    }
+
+    function stopLiveGpsTracking() {
+      if (gpsWatchId !== null) {
+        navigator.geolocation.clearWatch(gpsWatchId);
+        gpsWatchId = null;
+        const statusBadge = document.getElementById('gpsStatusBadge');
+        if (statusBadge) {
+          statusBadge.textContent = '📡 GPS Standby';
+          statusBadge.style.background = '#e0f2fe';
+          statusBadge.style.color = '#0284c7';
         }
       }
     }
@@ -327,7 +406,7 @@
     }
   </script>
 
-  <!-- FIREBASE WEB PUSH AUTH SCRIPT (WITH TIMED MULTI-STAGE FALLBACK) -->
+  <!-- FIREBASE WEB PUSH AUTH SCRIPT -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
     import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
@@ -338,7 +417,6 @@
     let countdownTimer = null;
     let cachedFallbackCode = '';
 
-    // Dynamically load Firebase config from Render environment variables via server endpoint
     async function initFirebaseClient() {
       try {
         const res = await fetch(`${BACKEND_API}/api/config/firebase`);
@@ -364,7 +442,6 @@
       statusMsg.style.color = '#0284c7';
       statusMsg.textContent = '🔄 Requesting notification permissions...';
 
-      // 1. Request Browser Permission and Register Device Push Token
       try {
         const permission = await Notification.requestPermission();
         if (permission === 'granted' && messaging) {
@@ -389,7 +466,6 @@
 
       statusMsg.textContent = '📤 Attempting Web Push notification...';
 
-      // 2. Request OTP Code from Backend
       try {
         const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
           method: 'POST',
@@ -403,7 +479,6 @@
           document.getElementById('phoneStep').style.display = 'none';
           document.getElementById('codeStep').style.display = 'block';
 
-          // Start 3-Minute (180s) Push Window Timer
           startPushTimeoutTimer();
         } else {
           statusMsg.style.color = '#da291c';
@@ -416,7 +491,7 @@
     };
 
     function startPushTimeoutTimer() {
-      let timeLeft = 180; // 3 minutes window
+      let timeLeft = 180;
       const statusMsg = document.getElementById('gateStatusMsg');
       const fallbackDisplay = document.getElementById('fallbackCodeDisplay');
       const displayCodeText = document.getElementById('displayCodeText');
@@ -433,7 +508,6 @@
         } else {
           clearInterval(countdownTimer);
           
-          // Push Timer Expired: Reveal On-Screen Code & Trigger WhatsApp Backup
           statusMsg.style.color = '#0284c7';
           statusMsg.textContent = 'Push timed out. Revealing on-screen code & sending WhatsApp backup...';
           
@@ -483,70 +557,6 @@
         alert('Network error verifying passcode.');
       }
     };
-  </script>
-  <script>
-    // ==========================================
-// BodaSwift Live GPS Tracker (Rider Side)
-// ==========================================
-let gpsWatchId = null;
-const BACKEND_API = 'https://fries-v0l8.onrender.com';
-
-/**
- * Start streaming rider GPS coordinates to backend
- * @param {string} orderId - Active order ID
- * @param {string} riderPhone - Active rider phone number
- */
-function startLiveGpsTracking(orderId, riderPhone) {
-  if (!('geolocation' in navigator)) {
-    alert('GPS Tracking not supported on this device.');
-    return;
-  }
-
-  const statusBadge = document.getElementById('gpsStatusBadge');
-  if (statusBadge) statusBadge.textContent = '📡 GPS Live';
-
-  gpsWatchId = navigator.geolocation.watchPosition(
-    async (position) => {
-      const { latitude, longitude, heading, speed } = position.coords;
-      console.log(`[Rider GPS] Lat: ${latitude}, Lng: ${longitude}`);
-
-      try {
-        await fetch(`${BACKEND_API}/api/rider/location`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            orderId,
-            riderPhone,
-            lat: latitude,
-            lng: longitude,
-            heading: heading || 0,
-            speed: speed || 0,
-            timestamp: Date.now()
-          })
-        });
-      } catch (err) {
-        console.error('[Rider GPS Dispatch Error]:', err);
-      }
-    },
-    (err) => {
-      console.warn('[Rider GPS Error]:', err.message);
-      if (statusBadge) statusBadge.textContent = '⚠️ GPS Error';
-    },
-    {
-      enableHighAccuracy: true,
-      maximumAge: 5000,
-      timeout: 10000
-    }
-  );
-}
-
-function stopLiveGpsTracking() {
-  if (gpsWatchId !== null) {
-    navigator.geolocation.clearWatch(gpsWatchId);
-    gpsWatchId = null;
-    console.log('[Rider GPS] Tracking stopped.');
-  }
-}
   </script>
 </body>
 </html>
