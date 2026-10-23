@@ -423,7 +423,7 @@
     }
   </script>
 
-  <!-- FIREBASE WEB PUSH AUTH SCRIPT -->
+  <!-- FIREBASE WEB PUSH AUTH SCRIPT (WITH TARGETED TOKEN OTP) -->
   <script type="module">
     import { initializeApp } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-app.js";
     import { getMessaging, getToken } from "https://www.gstatic.com/firebasejs/10.9.0/firebase-messaging.js";
@@ -433,6 +433,7 @@
     let app, messaging, VAPID_KEY;
     let countdownTimer = null;
     let cachedFallbackCode = '';
+    let currentFcmToken = null;
 
     async function initFirebaseClient() {
       try {
@@ -464,16 +465,16 @@
         if (permission === 'granted' && messaging) {
           statusMsg.textContent = '🔄 Registering device push token...';
           const registration = await navigator.serviceWorker.register('./firebase-messaging-sw.js');
-          const fcmToken = await getToken(messaging, { 
+          currentFcmToken = await getToken(messaging, { 
             vapidKey: VAPID_KEY,
             serviceWorkerRegistration: registration 
           });
 
-          if (fcmToken) {
+          if (currentFcmToken) {
             await fetch(`${BACKEND_API}/api/notifications/register-token`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ phone: activePhone, token: fcmToken, role: 'rider' })
+              body: JSON.stringify({ phone: activePhone, token: currentFcmToken, role: 'rider' })
             });
           }
         }
@@ -484,10 +485,11 @@
       statusMsg.textContent = '📤 Attempting Web Push notification...';
 
       try {
+        // Pass currentFcmToken so backend targets ONLY this requesting rider device
         const res = await fetch(`${BACKEND_API}/api/auth/request-push-otp`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ phone: activePhone })
+          body: JSON.stringify({ phone: activePhone, token: currentFcmToken })
         });
 
         const data = await res.json();
